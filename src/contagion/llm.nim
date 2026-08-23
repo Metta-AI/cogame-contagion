@@ -639,6 +639,12 @@ proc decideAll*(
     if attempt > 0:
       let remaining = int(float(budgetSeconds) - (epochTime() - started))
       timeout = max(5, min(10, remaining))
+    else:
+      ## Never longer than the week it belongs to: llmTimeoutSeconds is
+      ## schema-permitted up to 300 while turnBudgetSeconds maxes at 120, so
+      ## an unclamped first batch could outrun the whole week's budget and
+      ## leave the between-weeks deadline check as the only backstop.
+      timeout = max(5, min(timeout, budgetSeconds))
     var batch: RequestBatch
     for index in open:
       let seat = seats[index]

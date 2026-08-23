@@ -4,7 +4,7 @@
 ## must also be honest: a baseline that peeked at the true infection counts
 ## would be cheating, and the game would stop being about information.
 
-import std/[json, monotimes, os, strutils, times, unicode, unittest]
+import std/[json, monotimes, net, os, strutils, times, unicode, unittest]
 import support/helpers
 import contagion/server
 
@@ -304,6 +304,39 @@ suite "reply parsing":
       check event.scripted
       check event.eventToJson()["scripted"].getBool()
     check dials == Seats
+
+  test "the week's batch is bounded by the week budget, not by llmTimeoutSeconds":
+    ## config_schema permits llmTimeoutSeconds up to 300 while
+    ## turnBudgetSeconds maxes at 120, so an unclamped first batch could
+    ## outrun the week it belongs to. The endpoint below accepts the TCP
+    ## connection and never answers, which is the case a connection-refused
+    ## endpoint cannot exercise: only the timeout can end it.
+    var listener = newSocket()
+    listener.setSockOpt(OptReuseAddr, true)
+    listener.bindAddr(Port(0), "127.0.0.1")
+    listener.listen(32)
+    let port = listener.getLocalAddr()[1]
+    defer: listener.close()
+    putEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME",
+      "http://127.0.0.1:" & $port.int)
+    defer: delEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
+    var config = fixtureConfig(weeks = 8, seed = 11)
+    config.llmTimeoutSeconds = 60
+    let client = newLlmClient(config)
+    check not client.disabled
+    var sim = initSim(config)
+    let seats = sim.pendingSeats()
+    let started = getMonoTime()
+    let batch = client.decideAll(sim, seats, @["", "", "", "", "", ""],
+      @[skNone, skNone, skNone, skNone, skNone, skNone], budgetSeconds = 5)
+    let elapsed = (getMonoTime() - started).inMilliseconds
+    echo "silent-endpoint batch: ", elapsed, " ms (llmTimeoutSeconds 60, ",
+      "week budget 5)"
+    ## Unclamped this would be 60 s for the first batch alone; clamped it is
+    ## the 5 s budget plus the bounded 5..10 s retry.
+    check elapsed < 30_000
+    for index, _ in seats:
+      check batch.scripted[index]
 
   test "a seat whose container never connected plays the sentinel baseline":
     ## design.md:320-324: the game starts after player_connect_timeout_seconds
