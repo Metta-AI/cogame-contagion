@@ -398,6 +398,15 @@ proc userPrompt*(sim: Sim, seat: int, prompt: string): string =
 
 # ---- Anthropic / Bedrock transport ------------------------------------------
 
+proc cleanText*(text: string, limit: int): string =
+  ## Text over the cap is cut at a RUNE boundary with the cut marked. A byte
+  ## slice through a multi-byte character would leave invalid UTF-8 in the
+  ## replay and break its JSON.
+  result = text.strip()
+  if result.runeLen <= limit:
+    return
+  result = result.runeSubStr(0, limit - 1) & "…"
+
 proc extractJsonObject*(text: string): JsonNode =
   ## Pulls the first {...} object out of a model response, tolerating fences.
   let start = text.find('{')
@@ -446,7 +455,7 @@ proc textOf(client: LlmClient, response: Response, error, url: string):
   if error.len > 0:
     raise newException(ContagionError, "llm transport: " & error)
   if response.code == 401 or response.code == 403:
-    let detail = response.body[0 .. min(response.body.high, 400)]
+    let detail = cleanText(response.body, 400)
     if "Model access is denied" in response.body and
         client.tryNextBedrockModel("no model access"):
       raise newException(ContagionError,
@@ -455,12 +464,12 @@ proc textOf(client: LlmClient, response: Response, error, url: string):
     raise newException(ContagionError,
       "llm auth failed (" & $response.code & ") at " & url & ": " & detail)
   if response.code == 429:
-    let detail = response.body[0 .. min(response.body.high, 300)]
+    let detail = cleanText(response.body, 300)
     discard client.tryNextBedrockModel("throttled")
     raise newException(ContagionError, "llm throttled (429): " & detail)
   if response.code < 200 or response.code >= 300:
     raise newException(ContagionError, "anthropic error " & $response.code &
-      ": " & response.body[0 .. min(response.body.high, 300)])
+      ": " & cleanText(response.body, 300))
   let payload = parseJson(response.body)
   if payload{"stop_reason"}.getStr() == "refusal":
     raise newException(ContagionError, "anthropic refusal")
@@ -469,16 +478,7 @@ proc textOf(client: LlmClient, response: Response, error, url: string):
       result.add(contentBlock{"text"}.getStr())
   if payload{"stop_reason"}.getStr() == "max_tokens" and '{' notin result:
     raise newException(ContagionError, "reply cut off at max_tokens before " &
-      "any JSON: " & result[0 .. min(result.high, 160)].replace("\n", " "))
-
-proc cleanText*(text: string, limit: int): string =
-  ## Text over the cap is cut at a RUNE boundary with the cut marked. A byte
-  ## slice through a multi-byte character would leave invalid UTF-8 in the
-  ## replay and break its JSON.
-  result = text.strip()
-  if result.runeLen <= limit:
-    return
-  result = result.runeSubStr(0, limit - 1) & "…"
+      "any JSON: " & cleanText(result, 160).replace("\n", " "))
 
 proc coerceDial(node: JsonNode, name: string, lo, hi: int): int =
   ## An int, a numeric string, or a float (rounded). Out of range or
