@@ -605,21 +605,30 @@ proc decideAll*(
   prompts: seq[string],
   scripted: seq[ScriptKind],
   budgetSeconds: int = 35
-): seq[Decision] =
-  ## One decision per seat in `seats`, in order. Never raises: any failure
-  ## falls back to the scripted sentinel move so the episode always advances.
+): tuple[decisions: seq[Decision], scripted: seq[bool]] =
+  ## One decision per seat in `seats`, in order, each paired with whether it is
+  ## a SCRIPTED move rather than a model reply. Never raises: any failure falls
+  ## back to the scripted sentinel move so the episode always advances.
   ## `prompts` and `scripted` are indexed by SEAT.
+  ##
+  ## `result.scripted[i]` is true for a seat registered as a baseline, for
+  ## every seat when the client has no credentials, AND for a seat that
+  ## exhausted its retry and took the sentinel fallback — the caller cannot
+  ## tell the last case from the registration, so this batch has to say so or
+  ## the fallback never reaches the replay.
   ##
   ## The whole week goes out as ONE parallel batch, and the single retry is
   ## bounded by what is LEFT of the week's budget rather than by a second full
   ## timeout — that is what keeps the per-week ceiling a real ceiling.
-  result = newSeq[Decision](seats.len)
+  result.decisions = newSeq[Decision](seats.len)
+  result.scripted = newSeq[bool](seats.len)
   var open: seq[int]     ## indexes into `seats` still undecided
   for index, seat in seats:
     let kind = scripted[seat]
     if kind != skNone or client.disabled:
-      result[index] = scriptedDecision(sim, seat,
+      result.decisions[index] = scriptedDecision(sim, seat,
         (if kind == skNone: skSentinel else: kind))
+      result.scripted[index] = true
     else:
       open.add(index)
   let started = epochTime()
@@ -650,7 +659,7 @@ proc decideAll*(
         ## Reject illegal replies here so the retry carries the hint.
         var probe = sim
         probe.applyDecision(seat, decision, false)
-        result[index] = decision
+        result.decisions[index] = decision
       except CatchableError as error:
         echo "contagion llm: seat ", seat, " attempt ", attempt, " failed: ",
           error.msg
@@ -659,4 +668,5 @@ proc decideAll*(
   for index in open:
     let seat = seats[index]
     echo "contagion llm: seat ", seat, " falling back to the sentinel move"
-    result[index] = scriptedDecision(sim, seat, skSentinel)
+    result.decisions[index] = scriptedDecision(sim, seat, skSentinel)
+    result.scripted[index] = true

@@ -282,13 +282,17 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
       ## The slow part (Claude, ONE parallel batch for all six seats) runs
       ## outside the lock on a snapshot; only this thread mutates the sim, so
       ## the snapshot cannot go stale.
-      let decisions = client.decideAll(simCopy, seats, prompts, scripted,
+      let batch = client.decideAll(simCopy, seats, prompts, scripted,
         config.turnBudgetSeconds)
 
       withLock stateLock:
         for index, seat in seats:
-          let decision = decisions[index]
-          let wasScripted = scripted[seat] != skNone or client.disabled
+          let decision = batch.decisions[index]
+          ## Straight from the batch, NOT re-derived from the registration: a
+          ## seat that exhausted its retry and took the sentinel fallback is
+          ## registered as an LLM policy but did not play one, and the replay
+          ## is the only place phase 60 can count that.
+          let wasScripted = batch.scripted[index]
           echo "contagion: week ", state.sim.week, " ",
             state.sim.regionOf(seat), " L", decision.lockdown,
             " T", decision.testing,

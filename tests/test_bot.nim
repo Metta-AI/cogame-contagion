@@ -4,7 +4,7 @@
 ## must also be honest: a baseline that peeked at the true infection counts
 ## would be cheating, and the game would stop being about information.
 
-import std/[json, monotimes, strutils, times, unicode, unittest]
+import std/[json, monotimes, os, strutils, times, unicode, unittest]
 import support/helpers
 
 proc totals(sim: Sim): tuple[deaths: int64, meanScore: int64] =
@@ -264,15 +264,45 @@ suite "reply parsing":
     check client.disabled
     var sim = initSim(config)
     let seats = sim.pendingSeats()
-    let decisions = client.decideAll(sim, seats,
+    let batch = client.decideAll(sim, seats,
       @["be bold", "", "", "", "", ""],
       @[skNone, skNone, skLaggard, skNone, skNone, skNone])
-    check decisions.len == Seats
+    check batch.decisions.len == Seats
     for index, seat in seats:
       let kind = if seat == 2: skLaggard else: skSentinel
-      check decisions[index] == scriptedDecision(sim, seat, kind)
-      sim.applyDecision(seat, decisions[index], true)
+      check batch.decisions[index] == scriptedDecision(sim, seat, kind)
+      check batch.scripted[index]
+      sim.applyDecision(seat, batch.decisions[index], true)
     check sim.week == 1
+
+  test "a seat that exhausts its retry is recorded as scripted in the replay":
+    ## The transport is real and the endpoint is dead, so every seat burns
+    ## both attempts and takes the sentinel fallback. The batch has to SAY it
+    ## fell back: the seats are registered as LLM policies, so nothing in the
+    ## registration distinguishes the fallback move from a model reply, and
+    ## the `dial` event is the only record phase 60 can count.
+    putEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", "http://127.0.0.1:1")
+    defer: delEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
+    let config = fixtureConfig(weeks = 8, seed = 5)
+    let client = newLlmClient(config)
+    check not client.disabled
+    var sim = initSim(config)
+    let seats = sim.pendingSeats()
+    let batch = client.decideAll(sim, seats, @["", "", "", "", "", ""],
+      @[skNone, skNone, skNone, skNone, skNone, skNone], budgetSeconds = 10)
+    for index, seat in seats:
+      check batch.scripted[index]
+      check batch.decisions[index] == scriptedDecision(sim, seat, skSentinel)
+      ## Exactly what the server does with the batch.
+      sim.applyDecision(seat, batch.decisions[index], batch.scripted[index])
+    var dials = 0
+    for event in sim.events:
+      if event.kind != evDial:
+        continue
+      inc dials
+      check event.scripted
+      check event.eventToJson()["scripted"].getBool()
+    check dials == Seats
 
   test "the prompt carries the seat's own table and nothing hidden":
     var sim = initSim(fixtureConfig(weeks = 8, seed = 7))
