@@ -428,13 +428,17 @@
       ctx.restore();
     }
 
-    // Portrait.
+    // Portrait: the nano-banana governor cog, drawn big enough that its prop
+    // (sash, gavel, clipboard, megaphone, medkit, key) reads at board scale,
+    // anchored by its wheels on the readout strip below. Smoothing stays on:
+    // the sprite is a 192 px render, not pixel art.
     var sprite = images[PORTRAITS[seatIndex % PORTRAITS.length]];
-    var ps = size * 0.6;
+    var ps = size * 0.78;
+    var font = Math.max(9, 11 * scale);
+    var feet = y + tileH - font * 2.5 + 2;
     ctx.save();
     if (sprite && sprite.width) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sprite, node.x - ps / 2, node.y - ps * 0.62, ps, ps);
+      ctx.drawImage(sprite, node.x - ps / 2, feet - ps, ps, ps);
     } else {
       ctx.fillStyle = COLOR_HEX[color];
       ctx.fillRect(node.x - ps / 3, node.y - ps / 3, ps / 1.5, ps / 1.5);
@@ -465,7 +469,6 @@
       ctx.restore();
     }
 
-    var font = Math.max(9, 11 * scale);
     // Region name on a paper nameplate above the tile, in the seat colour, so
     // it reads over both the parchment and the red stain.
     ctx.save();

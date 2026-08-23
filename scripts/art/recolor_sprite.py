@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Recolour a coworld-ctf soldier sprite into a new seat colour.
 
+NO LONGER OWNS data/governor_*_front.png. Those six portraits are now
+nano-banana renders of the Softmax cog, produced by
+scripts/art/split_governor_sheet.py from scripts/art/source/governors_sheet.png.
+This script is kept as a general hue-rotation tool and for the history below.
+
 Contagion needs six governor portraits and the starter ships four (red, blue,
 green, yellow, MIT-licensed with the rest of the ctf art). Rather than draw two
 placeholder rectangles, the violet and orange governors are produced from the
