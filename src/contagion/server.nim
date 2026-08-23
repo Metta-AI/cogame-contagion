@@ -328,7 +328,12 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
           except ContagionError as error:
             echo "contagion: reply rejected (", error.msg,
               "); using the sentinel fallback"
-            let fallback = scriptedDecision(state.sim, seat, skSentinel)
+            ## From the PRE-BATCH snapshot, not the live sim: lower-index
+            ## seats have already latched this week, and the sentinel reads
+            ## neighbours' published testing levels. Generating the fallback
+            ## from the live sim would let it see a neighbour's week-w
+            ## decision, which no governor may (design.md:156-157).
+            let fallback = scriptedDecision(simCopy, seat, skSentinel)
             state.sim.applyDecision(seat, fallback, true)
         state.broadcastLocked()
 

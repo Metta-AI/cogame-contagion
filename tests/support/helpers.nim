@@ -32,10 +32,16 @@ proc decideAll*(sim: var Sim, decision: Decision) =
 proc playScripted*(config: GameConfig, kinds: array[Seats, ScriptKind]): Sim =
   ## A whole episode on the scripted baselines. `applyDecision` raises on
   ## anything illegal, so a completed episode IS the legality assertion.
+  ##
+  ## Every week's six decisions are generated from ONE snapshot taken before
+  ## any of them latch, exactly as the server's per-week batch does: no
+  ## governor may see another's week-w decision before submitting, and the
+  ## baselines read their neighbours' published testing levels.
   result = initSim(config)
   while not result.done:
-    for seat in result.pendingSeats():
-      let decision = scriptedDecision(result, seat, kinds[seat])
+    let view = result
+    for seat in view.pendingSeats():
+      let decision = scriptedDecision(view, seat, kinds[seat])
       check decision.say.len == 0
       check decision.notes.len == 0
       check decision.aid.len == 0
