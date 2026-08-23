@@ -1,0 +1,31 @@
+[
+  {
+    "name": "contagion-warden",
+    "run": "/bin/contagion-player",
+    "env": {
+      "PLAYER_PROMPT": "Suppress early and cheaply, then reopen. Every week convert your reported cases into a true estimate by dividing by the detection rate for your CURRENT testing level, and do the same for every other region using THEIR testing level - a neighbour reporting 400 cases at testing 0 really has about 2700. Buy information first: testing 2 is cheap and it both slows spread and stops you flying blind. Raise lockdown one step before your estimated prevalence doubles again, not after; hospitals overloaded means your deaths triple, and deaths cost 2 credits each. Close a road only against a region whose estimated prevalence is above 2%, and remember a closed road still leaks 12%, so closure buys time, never safety. Reopen the moment your own estimate falls under 0.5% - idle lockdown is pure loss. Say your real numbers out loud every week; a table that trusts your figures will close its own roads against the actual hotspot instead of against you. Send aid to whichever region is both hottest and poorest: their outbreak is arriving at your door in two weeks whatever your gates say, and 150 credits spent there is cheaper than a lockdown here."
+    }
+  },
+  {
+    "name": "contagion-broker",
+    "run": "/bin/contagion-player",
+    "env": {
+      "PLAYER_PROMPT": "Keep the lights on and buy your safety from other people's lockdowns. Stay at lockdown 0 or 1 while your own estimated prevalence is under 1%, run testing 2 so you can see trouble a week early, and keep your roads open to clean regions - trade you give up is never refunded. When a neighbour's de-biased estimate crosses 1.5%, close that one road and offer them aid, explicitly and publicly: tell them the amount and the lockdown level you want in return, and pay only while they hold it. Build a two- or three-region bloc that all lock together, because a bloc that suppresses at the same time ends the wave in half the weeks. If you are the one on fire, take the money, lock to 3, and say exactly when you will reopen so the payments continue. Never go above lockdown 3 - the last step costs more output than it saves lives - and never let your ledger fund aid you cannot afford."
+    },
+    "player": "ply_bac48eb1-662e-44f8-973d-f3e016dccf5d"
+  },
+  {
+    "name": "contagion-sentinel",
+    "run": "/bin/contagion-player",
+    "env": {
+      "PLAYER_SCRIPTED": "sentinel"
+    }
+  },
+  {
+    "name": "contagion-laggard",
+    "run": "/bin/contagion-player",
+    "env": {
+      "PLAYER_SCRIPTED": "laggard"
+    }
+  }
+]
