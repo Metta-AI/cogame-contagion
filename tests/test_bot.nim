@@ -269,9 +269,12 @@ suite "reply parsing":
       @["be bold", "", "", "", "", ""],
       @[skNone, skNone, skLaggard, skNone, skNone, skNone])
     check batch.decisions.len == Seats
+    ## Compare against the PRE-BATCH view: applying a seat's decision mutates
+    ## the sim the next seat's baseline would read.
+    let view = sim
     for index, seat in seats:
       let kind = if seat == 2: skLaggard else: skSentinel
-      check batch.decisions[index] == scriptedDecision(sim, seat, kind)
+      check batch.decisions[index] == scriptedDecision(view, seat, kind)
       check batch.scripted[index]
       sim.applyDecision(seat, batch.decisions[index], true)
     check sim.week == 1
@@ -291,9 +294,10 @@ suite "reply parsing":
     let seats = sim.pendingSeats()
     let batch = client.decideAll(sim, seats, @["", "", "", "", "", ""],
       @[skNone, skNone, skNone, skNone, skNone, skNone], budgetSeconds = 10)
+    let view = sim
     for index, seat in seats:
       check batch.scripted[index]
-      check batch.decisions[index] == scriptedDecision(sim, seat, skSentinel)
+      check batch.decisions[index] == scriptedDecision(view, seat, skSentinel)
       ## Exactly what the server does with the batch.
       sim.applyDecision(seat, batch.decisions[index], batch.scripted[index])
     var dials = 0

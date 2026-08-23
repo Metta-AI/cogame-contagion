@@ -148,6 +148,20 @@ proc estimatedRatePpm*(region: RegionState): int64 =
   let living = region.alive
   if living <= 0: 0 else: estimatedCases(region) * Ppm div living
 
+const
+  SentinelLockdownCutsPpm* = [1_000'i64, 4_000, 12_500, 30_000]
+    ## Own de-biased prevalence, in ppm, at which the sentinel steps its
+    ## lockdown 0->1, 1->2, 2->3, 3->4.
+  SentinelTestingCutsPpm* = [1_000'i64, 12_500]
+    ## ... and its testing 1->2, 2->3.
+  SentinelRoadCutsPpm* = [160'i64, 800]
+    ## A NEIGHBOUR's de-biased prevalence, in ppm, at which the sentinel
+    ## screens (gate 1) and then closes (gate 2) the road to it.
+    ##
+    ## All three families are the argmax of the x0.25..x4 grid swept in
+    ## tests/test_sweep.nim over five seeds; that test re-runs the sweep and
+    ## fails if these stop being its best cell. They are NOT hand-picked.
+
 proc sentinelDecision*(sim: Sim, seat: int): Decision =
   ## The threshold dial policy, and the universal fallback move.
   let pos = sim.posOf[seat]
@@ -157,21 +171,21 @@ proc sentinelDecision*(sim: Sim, seat: int): Decision =
   let own = estimatedRatePpm(sim.regions[pos])
   result = blankDecision()
   result.lockdown =
-    if own < 2_000 * scale div Ppm: 0
-    elif own < 8_000 * scale div Ppm: 1
-    elif own < 25_000 * scale div Ppm: 2
-    elif own < 60_000 * scale div Ppm: 3
+    if own < SentinelLockdownCutsPpm[0] * scale div Ppm: 0
+    elif own < SentinelLockdownCutsPpm[1] * scale div Ppm: 1
+    elif own < SentinelLockdownCutsPpm[2] * scale div Ppm: 2
+    elif own < SentinelLockdownCutsPpm[3] * scale div Ppm: 3
     else: 4
   result.testing =
-    if own < 2_000 * scale div Ppm: 1
-    elif own < 25_000 * scale div Ppm: 2
+    if own < SentinelTestingCutsPpm[0] * scale div Ppm: 1
+    elif own < SentinelTestingCutsPpm[1] * scale div Ppm: 2
     else: 3
   for slot in 0 ..< Degree:
     let far = otherEnd(NeighboursOf[pos][slot], pos)
     let theirs = estimatedRatePpm(sim.regions[far])
     result.borders[slot] =
-      if theirs < 4_000 * scale div Ppm: 0
-      elif theirs < 20_000 * scale div Ppm: 1
+      if theirs < SentinelRoadCutsPpm[0] * scale div Ppm: 0
+      elif theirs < SentinelRoadCutsPpm[1] * scale div Ppm: 1
       else: 2
 
 proc laggardDecision*(sim: Sim, seat: int): Decision =
