@@ -838,7 +838,7 @@
       case "dial":
         var closes = (event.borders || []).filter(function (b) {
           return b.gate >= 2;
-        }).map(function (b) { return b.to; });
+        }).map(function (b) { return nameMap.text(b.to); });
         return name(event.seat) + " — lockdown " + event.lockdown +
           ", testing " + event.testing +
           (closes.length ? ", closes " + closes.join(" and ") : "") +
@@ -886,7 +886,7 @@
           html += '<div class="feed-line feed-score' +
             (future ? " feed-future" : "") + '">' +
             escapeHtml(clampName(nameMap.seat(event.seat)) + " sends " +
-              num(entry.amount) + " to " + entry.to) + "</div>";
+              num(entry.amount) + " to " + nameMap.text(entry.to)) + "</div>";
         });
         if (event.say) {
           html += '<div class="feed-line feed-say' +
