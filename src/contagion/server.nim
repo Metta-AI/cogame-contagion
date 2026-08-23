@@ -211,6 +211,19 @@ const PlayBudgetFraction* = 0.6
   ## container start, player connects, and writing the artifacts — the part
   ## that must never be the thing that runs out of time.
 
+proc pinUnconnectedSeats*(scripted: var seq[ScriptKind], connected: seq[bool]) =
+  ## After `player_connect_timeout_seconds` the game starts with whoever is
+  ## there, and a seat whose container never connected is treated as
+  ## `PLAYER_SCRIPTED=sentinel`: there is nobody behind it to guide it, so
+  ## sending its unguided prompt to the model would cost a round trip a week
+  ## to play a worse policy than the baseline. A seat that already registered
+  ## a baseline keeps it, and a late connect takes the seat back when its
+  ## prompt frame lands.
+  for slot in 0 ..< scripted.len:
+    let up = slot < connected.len and connected[slot]
+    if not up and scripted[slot] == skNone:
+      scripted[slot] = skSentinel
+
 proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
   {.gcsafe.}:
     let config = state.config
@@ -227,6 +240,14 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
 
     withLock stateLock:
       state.started = true
+      var connected = newSeq[bool](config.players.len)
+      for slot in 0 ..< connected.len:
+        connected[slot] = state.playerSockets.hasKey(slot)
+      pinUnconnectedSeats(state.scripted, connected)
+      for slot in 0 ..< connected.len:
+        if not connected[slot]:
+          echo "contagion: slot ", slot, " never connected; playing ",
+            state.scripted[slot]
       echo "contagion: starting with ", state.playerSockets.len, "/",
         config.tokens.len, " players connected"
       state.broadcastLocked()

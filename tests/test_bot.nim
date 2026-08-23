@@ -6,6 +6,7 @@
 
 import std/[json, monotimes, os, strutils, times, unicode, unittest]
 import support/helpers
+import contagion/server
 
 proc totals(sim: Sim): tuple[deaths: int64, meanScore: int64] =
   var deaths = 0'i64
@@ -303,6 +304,20 @@ suite "reply parsing":
       check event.scripted
       check event.eventToJson()["scripted"].getBool()
     check dials == Seats
+
+  test "a seat whose container never connected plays the sentinel baseline":
+    ## design.md:320-324: the game starts after player_connect_timeout_seconds
+    ## with whoever is there, and unconnected seats are treated as
+    ## PLAYER_SCRIPTED=sentinel — not as an LLM policy with an empty prompt.
+    var scripted = @[skNone, skNone, skLaggard, skSentinel, skNone, skNone]
+    pinUnconnectedSeats(scripted, @[true, false, false, false, true, false])
+    check scripted == @[skNone, skSentinel, skLaggard, skSentinel, skNone,
+      skSentinel]
+    ## A short `connected` (no sockets at all yet) pins every open seat.
+    var none = @[skNone, skNone, skLaggard, skNone, skNone, skNone]
+    pinUnconnectedSeats(none, @[])
+    check none == @[skSentinel, skSentinel, skLaggard, skSentinel, skSentinel,
+      skSentinel]
 
   test "the prompt carries the seat's own table and nothing hidden":
     var sim = initSim(fixtureConfig(weeks = 8, seed = 7))
