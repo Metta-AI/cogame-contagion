@@ -147,5 +147,7 @@ proc update*(config: var GameConfig, configJson: string) =
     config.maxOutputTokens = node["maxOutputTokens"].getInt()
   if node.hasKey("llmTimeoutSeconds"):
     config.llmTimeoutSeconds = node["llmTimeoutSeconds"].getInt()
-  if config.weeks < 4:
-    raise newException(ContagionError, "weeks must be at least 4")
+  ## `weeks` is NOT validated here: sampleEpisode clamps it to MinWeeks ..
+  ## MaxWeeks, and it already clamped the upper bound silently. Raising on
+  ## the lower bound only killed the container with no results and no replay
+  ## for a config the manifest schema cannot even produce.

@@ -72,6 +72,20 @@ suite "seeded setup":
       layouts.incl($initSim(fixtureConfig(seed = seed)).posOf)
     check layouts.len > 1
 
+  test "a runtime config's week count is clamped, not fatal":
+    ## design.md:410: sampleEpisode "clamps weeks to 4..40". The upper bound
+    ## always did; the lower bound used to raise at config load instead, which
+    ## killed the container with no results and no replay.
+    var short = defaultGameConfig()
+    short.update("""{"weeks": 2}""")
+    check sampleEpisode(short).weeks == MinWeeks
+    var long = defaultGameConfig()
+    long.update("""{"weeks": 400}""")
+    check sampleEpisode(long).weeks == MaxWeeks
+    var fine = defaultGameConfig()
+    fine.update("""{"weeks": 12}""")
+    check sampleEpisode(fine).weeks == 12
+
   test "week 0 compartments sum to Pop and one region is seeded hot":
     let sim = initSim(fixtureConfig(seed = 3))
     check sim.week == 0
