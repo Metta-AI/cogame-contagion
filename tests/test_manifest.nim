@@ -226,3 +226,17 @@ suite "the 360 px legibility guard":
     ## The readiness signals the CI viewer smoke polls.
     check "data-replay-error" in shell
     check "data-replay-loaded" in readRepoFile("client/renderer.js")
+
+  test "replay playback has a Space pause and a 0.5x speed chip":
+    ## Both live in attachReplay + chrome.css, so the server page
+    ## (client/replay.html) and the static wasm bundle
+    ## (replay-viewer/index.html) get them from the same source.
+    let js = readRepoFile("client/renderer.js")
+    check "togglePlay" in js
+    check "evt.code !== \"Space\"" in js
+    check "[0.5, 1, 2]" in js
+    ## The chips have to actually reach playback: the dwell is divided.
+    check "stepMs / speed" in js
+    check ".tchip" in readRepoFile("client/chrome.css")
+    for page in ["client/replay.html", "replay-viewer/index.html"]:
+      check "renderer.js" in readRepoFile(page)
