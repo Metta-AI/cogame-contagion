@@ -27,5 +27,23 @@ uv run python -m metta_posttrain.train --dataset /tmp/contagion-standard \
 ```
 
 The dataset is imitation of scripted play; its loss does not measure policy
-quality. Contagion's dials, per-road controls, aid, and free-form text exceed
-the current fixed discrete action bridge for Metta RL and PufferLib.
+quality.
+
+## Numeric reinforcement learning
+
+Compile the persistent bridge and pass its binary, manifest, and variant to
+Metta's `recipes.external.coworld.train` (native PufferLib) or
+`recipes.external.coworld_metta_rl.train` (Metta RL):
+
+```bash
+nim c -d:release --path:src -o:/tmp/contagion-train-bridge tools/train_bridge.nim
+python3 tools/test_train_bridge.py /tmp/contagion-train-bridge
+```
+
+Both certified variants expose 99 numeric observations and five action heads:
+lockdown (5), testing (4), and three per-road gates (4 each, including keep).
+The observation contains the same published case reports and dials shown to a
+governor, plus that governor's history. It excludes the simulator's hidden
+true infection counts. The sentinel and laggard scripts supply teacher dials.
+The numeric policy omits aid and free-form talk or notes; the text exporter
+retains the full hosted reply interface.
