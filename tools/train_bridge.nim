@@ -2,7 +2,7 @@
 ## nim c -d:release --path:src -o:contagion-train-bridge tools/train_bridge.nim
 
 import std/[json, os]
-import contagion/[llm, sim]
+import contagion/[player_policy, rules, sim]
 
 const OperatorPrompt =
   "Protect your region's health and economy using the published case reports."
@@ -28,6 +28,8 @@ proc decision(sim: Sim, seat, id: int): JsonNode =
   var table = newJArray()
   for region in 0 ..< Regions:
     table.add(sim.publicRegion(region))
+  let (system, user) = promptsFromView(sim.playerViewJson(seat),
+    OperatorPrompt)
   %*{
     "kind": "decision", "game": "contagion", "decision_id": id,
     "seat": seat, "engine_seat": seat, "turn": sim.week,
@@ -38,8 +40,8 @@ proc decision(sim: Sim, seat, id: int): JsonNode =
       "own_aid_in": own.aidIn, "own_aid_out": own.aidOut},
     "inbox": [],
     "messages": [
-      {"role": "system", "content": systemPrompt(sim, seat)},
-      {"role": "user", "content": userPrompt(sim, seat, OperatorPrompt)}
+      {"role": "system", "content": system},
+      {"role": "user", "content": user}
     ],
     "speech_messages": [],
     "action_schema": {"type": "object",

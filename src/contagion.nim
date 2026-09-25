@@ -41,6 +41,5 @@ when isMainModule:
     config = sampleEpisode(config)
     echo "contagion: seats=", config.players.len,
       " weeks=", config.weeks,
-      " talk=", config.talk,
-      " model=", config.model
+      " talk=", config.talk
     runGameServer(config, runtimeConfig)

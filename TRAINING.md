@@ -33,7 +33,7 @@ quality.
 The [ordinary player](players/ordinary/README.md) can collect accepted actions from real local
 episodes through the standard Coworld policy artifact URL. Its exporter keeps complete game seeds
 in one train or validation split. The same player can load the resulting adapter and submit its
-decisions through `contagion.player.v2`. Jev selects complete weekly actions through that socket.
+decisions through `contagion.player.v3`. Jev selects complete weekly actions through that socket.
 
 ## Numeric reinforcement learning
 

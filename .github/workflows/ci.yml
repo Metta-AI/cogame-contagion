@@ -155,6 +155,17 @@ jobs:
           nim c -d:release --path:src -o:/tmp/contagion-train-bridge tools/train_bridge.nim
           python3 tools/test_train_bridge.py /tmp/contagion-train-bridge
 
+      - name: Verify private-view policy parity and mixed player episode
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/contagion-venv
+          /tmp/contagion-venv/bin/pip install websocket-client==1.8.0
+          nim c -d:release --path:src -o:/tmp/contagion-game src/contagion.nim
+          nim c -d:release --path:src -o:/tmp/contagion-player src/contagion_player.nim
+          nim c -d:release --path:src -o:/tmp/contagion-oracle tools/policy_view_oracle.nim
+          python3 tools/test_policy_view.py /tmp/contagion-oracle
+          /tmp/contagion-venv/bin/python tools/ci/player_policy_smoke.py /tmp/contagion-game /tmp/contagion-player
+
   # ---------------------------------------------------------------------
   # Packaging smoke: the production image builds, and one real episode runs
   # end to end in raw docker with the certification fixture's seat mix.

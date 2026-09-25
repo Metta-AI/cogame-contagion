@@ -52,8 +52,8 @@ suite "the manifest":
     check "players" in required
     ## Every key the game actually reads has to be declarable.
     for key in ["seed", "weeks", "talk", "episodeTimeoutSeconds",
-        "turnBudgetSeconds", "turnDelayMs", "model", "maxOutputTokens",
-        "llmTimeoutSeconds", "player_connect_timeout_seconds"]:
+        "turnBudgetSeconds", "turnDelayMs",
+        "player_connect_timeout_seconds"]:
       check properties.hasKey(key)
     check properties["weeks"]["minimum"].getInt() == MinWeeks
     check properties["weeks"]["maximum"].getInt() == MaxWeeks
@@ -89,7 +89,7 @@ suite "the manifest":
       check protocols.hasKey(key)
       check protocols[key]["type"].getStr() == "text"
       check protocols[key]["value"].getStr().len > 200
-    check "contagion.player.v2" in protocols["player"]["value"].getStr()
+    check "contagion.player.v3" in protocols["player"]["value"].getStr()
     check "/global" in protocols["global"]["value"].getStr()
 
     let docs = manifest["game"]["docs"]
@@ -123,12 +123,13 @@ suite "the manifest":
     ## never occupies a certification slot.
     check declared == seated
 
-  test "the game runnable is the same image, with the secret URI wired":
+  test "the game runnable needs no inference credential":
     let runnable = manifest["game"]["runnable"]
     check runnable["type"].getStr() == "game"
     check runnable["image"].getStr() == "{{CONTAGION_IMAGE}}"
     check runnable["run"][0].getStr() == "/bin/contagion"
-    check runnable["env"]["ANTHROPIC_API_KEY_URI"].getStr() ==
+    check not runnable.hasKey("env")
+    check manifest["player"][0]["env"]["ANTHROPIC_API_KEY_URI"].getStr() ==
       "secret://coworld/contagion/anthropic_api_key"
     check manifest["game"]["name"].getStr() == "contagion"
     check not manifest["game"].hasKey("version")

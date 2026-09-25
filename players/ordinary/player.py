@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import websocket
 from capture import Capture
+from policy import candidates, prompts
 
 
 def choose(turn: dict, generator) -> tuple[dict, str]:
@@ -46,7 +47,8 @@ def choose(turn: dict, generator) -> tuple[dict, str]:
                                  "instructions": "Choose one complete Contagion weekly decision.",
                                  "criteria": criteria}},
     }).encode()
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json",
+               "X-Coworld-Player-Slot": str(turn["slot"])}
     if key:
         headers["Authorization"] = "Bearer " + key
     request = urllib.request.Request(endpoint.rstrip("/") + "/v1/systemone",
@@ -78,11 +80,8 @@ def main() -> None:
         generator = TransformersGenerator(Path(adapter))
     backend = "trained" if adapter else "jev" if os.environ.get("POC_JEV") == "1" else "canned"
     artifact = Capture(slot, backend) if os.environ.get("POC_CAPTURE_TRAINING") == "1" else None
-    register = json.dumps({"type": "prompt", "prompt": os.environ.get("PLAYER_PROMPT", ""),
-                           "scripted": False, "external": True})
     socket = websocket.create_connection(url, timeout=60)
     socket.settimeout(None)
-    socket.send(register)
     calls = 0
     pending: dict[int, tuple[dict, dict, str]] = {}
     while True:
@@ -93,15 +92,16 @@ def main() -> None:
             continue
         frame = json.loads(data)
         kind = frame["type"]
-        if kind == "welcome":
-            socket.send(register)
-        elif kind == "turn":
-            action, source = choose(frame, generator)
+        if kind == "turn":
+            system, user = prompts(frame["view"], os.environ.get("PLAYER_PROMPT", ""))
+            turn = {"system": system, "user": user,
+                    "candidates": candidates(frame["view"]), "slot": slot}
+            action, source = choose(turn, generator)
             if source == "jev":
                 calls += 1
-            pending[frame["week"]] = (frame, action, source)
+            pending[frame["week"]] = (turn, action, source)
             socket.send(json.dumps({"type": "decision", "week": frame["week"],
-                                    "action": action}))
+                                    "action": action, "source": source}))
         elif kind == "decision_result":
             turn, action, source = pending.pop(frame["week"])
             if artifact and frame["accepted"]:

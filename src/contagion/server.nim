@@ -3,7 +3,7 @@
 ## Endpoints:
 ##   GET /healthz                    - liveness
 ##   GET /client/global              - spectator page
-##   GET /client/player              - player page (view-only; policies are prompts)
+##   GET /client/player              - player page
 ##   GET /client/replay              - replay page (replay mode)
 ##   GET /client/renderer.js         - shared map renderer
 ##   GET /client/chrome.css          - shared broadcast chrome
@@ -12,40 +12,34 @@
 ##   WS  /global                     - spectator snapshots
 ##   WS  /replay                     - replay payload (replay mode)
 ##
-## Player protocol (contagion.player.v2), all JSON text frames:
+## Player protocol (contagion.player.v3), all JSON text frames:
 ##   game -> player: {"type":"welcome","slot":N,"name":"<region alias>",...}
 ##                   {"type":"state",...} after every event, redacted to what
 ##                     a governor may see (reported cases, never the truth)
 ##                   {"type":"final","scores":[...],"gdp":[...],"deaths":[...]}
-##   player -> game: {"type":"prompt","prompt":"...","scripted":"sentinel"}
-##                   (max 4000 chars; scripted plays a built-in baseline for
-##                   that seat: "sentinel" / "1", or "laggard")
-##                   {"type":"decision","week":N,"action":{...}}
-##   game -> external player: {"type":"turn","week":N,"system":str,
-##                            "user":str,"candidates":[...]}
+##                   {"type":"turn","week":N,"view":{...}}
+##   player -> game: {"type":"decision","week":N,"action":{...},
+##                   "source":"player"|"scripted"}
 
 import
-  std/[json, locks, os, sets, strutils, tables, times, unicode],
+  std/[json, locks, os, sets, strutils, tables, times],
   bitworld/runtime,
   curly,
   mummy,
   mummy/routers,
-  llm,
+  rules,
   sim
 
 const
-  MaxPromptLen = 4000
   ReplayVersion = 1
 
 type
   GameState = object
     config: GameConfig
     sim: Sim
-    prompts: seq[string]
-    scripted: seq[ScriptKind]
-    external: seq[bool]
     pendingWeek: int
     pendingDecisions: Table[int, Decision]
+    pendingScripted: Table[int, bool]
     playerSockets: Table[int, WebSocket]
     socketSlots: Table[WebSocket, int]
     globalSockets: HashSet[WebSocket]
@@ -217,19 +211,6 @@ const PlayBudgetFraction* = 0.6
   ## container start, player connects, and writing the artifacts — the part
   ## that must never be the thing that runs out of time.
 
-proc pinUnconnectedSeats*(scripted: var seq[ScriptKind], connected: seq[bool]) =
-  ## After `player_connect_timeout_seconds` the game starts with whoever is
-  ## there, and a seat whose container never connected is treated as
-  ## `PLAYER_SCRIPTED=sentinel`: there is nobody behind it to guide it, so
-  ## sending its unguided prompt to the model would cost a round trip a week
-  ## to play a worse policy than the baseline. A seat that already registered
-  ## a baseline keeps it, and a late connect takes the seat back when its
-  ## prompt frame lands.
-  for slot in 0 ..< scripted.len:
-    let up = slot < connected.len and connected[slot]
-    if not up and scripted[slot] == skNone:
-      scripted[slot] = skSentinel
-
 proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
   {.gcsafe.}:
     let config = state.config
@@ -249,16 +230,12 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
       var connected = newSeq[bool](config.players.len)
       for slot in 0 ..< connected.len:
         connected[slot] = state.playerSockets.hasKey(slot)
-      pinUnconnectedSeats(state.scripted, connected)
       for slot in 0 ..< connected.len:
         if not connected[slot]:
-          echo "contagion: slot ", slot, " never connected; playing ",
-            state.scripted[slot]
+          echo "contagion: slot ", slot, " never connected; sentinel fallback"
       echo "contagion: starting with ", state.playerSockets.len, "/",
         config.tokens.len, " players connected"
       state.broadcastLocked()
-
-    let client = newLlmClient(config)
 
     ## The platform kills the episode at its timeout and keeps nothing. Play
     ## inside a fraction of it so results and the replay are written with room
@@ -283,9 +260,6 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
     while true:
       var simCopy: Sim
       var seats: seq[int]
-      var prompts: seq[string]
-      var scripted: seq[ScriptKind]
-      var external: seq[bool]
       withLock stateLock:
         if state.sim.done:
           break
@@ -302,63 +276,43 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
           break
         seats = state.sim.pendingSeats()
         simCopy = state.sim
-        prompts = state.prompts
-        scripted = state.scripted
-        external = state.external
         echo "contagion: week ", state.sim.week, " of ", config.weeks,
           " at ", (epochTime() - gameStart).int, "s"
 
       let decisionDeadline = epochTime() + config.turnBudgetSeconds.float
-      var modelSeats, waitingSeats: seq[int]
+      var waitingSeats = 0
       withLock stateLock:
         state.pendingWeek = simCopy.week
         state.pendingDecisions.clear()
+        state.pendingScripted.clear()
         for seat in seats:
-          if not external[seat]:
-            modelSeats.add(seat)
-            continue
           if state.playerSockets.hasKey(seat):
+            waitingSeats.inc
             state.playerSockets[seat].send($ %*{
               "type": "turn",
               "week": simCopy.week,
-              "system": systemPrompt(simCopy, seat),
-              "user": userPrompt(simCopy, seat, prompts[seat]),
-              "candidates": [
-                {"id": "sentinel", "action": decisionJson(simCopy, seat,
-                  scriptedDecision(simCopy, seat, skSentinel))},
-                {"id": "laggard", "action": decisionJson(simCopy, seat,
-                  scriptedDecision(simCopy, seat, skLaggard))}
-              ]
+              "view": simCopy.playerViewJson(seat)
             })
-            waitingSeats.add(seat)
-      let batch = client.decideAll(simCopy, modelSeats, prompts, scripted,
-        config.turnBudgetSeconds)
-      while waitingSeats.len > 0 and epochTime() < decisionDeadline:
+      while epochTime() < decisionDeadline:
         var received = 0
         withLock stateLock:
-          for seat in waitingSeats:
+          for seat in seats:
             if state.pendingDecisions.hasKey(seat):
               received.inc
-        if received == waitingSeats.len:
+        if received == waitingSeats:
           break
         sleep(20)
       var decisions = newSeq[Decision](seats.len)
       var wasScripted = newSeq[bool](seats.len)
-      var modelIndex = 0
-      for index, seat in seats:
-        if external[seat]:
-          continue
-        decisions[index] = batch.decisions[modelIndex]
-        wasScripted[index] = batch.scripted[modelIndex]
-        modelIndex.inc
+      var accepted = newSeq[bool](seats.len)
       withLock stateLock:
         for index, seat in seats:
-          if not external[seat]:
-            continue
           if state.pendingDecisions.hasKey(seat):
             decisions[index] = state.pendingDecisions[seat]
+            wasScripted[index] = state.pendingScripted[seat]
+            accepted[index] = true
           else:
-            echo "contagion: external seat ", seat, " using sentinel fallback"
+            echo "contagion: player seat ", seat, " using sentinel fallback"
             decisions[index] = scriptedDecision(simCopy, seat, skSentinel)
             wasScripted[index] = true
         state.pendingWeek = -1
@@ -366,10 +320,7 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
       withLock stateLock:
         for index, seat in seats:
           let decision = decisions[index]
-          ## Straight from the batch, NOT re-derived from the registration: a
-          ## seat that exhausted its retry and took the sentinel fallback is
-          ## registered as an LLM policy but did not play one, and the replay
-          ## is the only place phase 60 can count that.
+          ## Replay records the source of the decision actually applied.
           echo "contagion: week ", state.sim.week, " ",
             state.sim.regionOf(seat), " L", decision.lockdown,
             " T", decision.testing,
@@ -392,12 +343,13 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
             let fallback = scriptedDecision(simCopy, seat, skSentinel)
             state.sim.applyDecision(seat, fallback, true)
             wasScripted[index] = true
+            accepted[index] = false
         state.broadcastLocked()
         for index, seat in seats:
-          if external[seat] and state.playerSockets.hasKey(seat):
+          if state.playerSockets.hasKey(seat):
             state.playerSockets[seat].send($ %*{
               "type": "decision_result", "week": simCopy.week,
-              "accepted": not wasScripted[index]
+              "accepted": accepted[index]
             })
 
       ## Pace between weeks so spectators can read the map.
@@ -483,7 +435,7 @@ proc playerUpgradeHandler(request: Request) {.gcsafe.} =
         neighbourNames.add(%RegionNames[far])
       websocket.send($ %*{
         "type": "welcome",
-        "protocol": "contagion.player.v2",
+        "protocol": "contagion.player.v3",
         "slot": slot,
         "name": state.sim.regionOf(slot),
         "pos": state.sim.posOf[slot],
@@ -529,41 +481,21 @@ proc websocketHandler(
         return
       try:
         let payload = parseJson(message.data)
-        if payload{"type"}.getStr() == "prompt":
-          var prompt = payload{"prompt"}.getStr()
-          if prompt.runeLen > MaxPromptLen:
-            prompt = prompt.runeSubStr(0, MaxPromptLen)
-          let node = payload{"scripted"}
-          let scripted =
-            if node.isNil: skNone
-            elif node.kind == JBool: (if node.getBool(): skSentinel
-              else: skNone)
-            else: parseScriptKind(node.getStr())
-          let external = payload{"external"}.getBool(false)
-          if external and scripted != skNone:
-            raise newException(ContagionError,
-              "an external player cannot register as scripted")
-          withLock stateLock:
-            state.prompts[slot] = prompt
-            state.scripted[slot] = scripted
-            state.external[slot] = external
-          echo "contagion: slot ", slot, " delivered a prompt (",
-            prompt.len, " chars",
-            (if scripted != skNone: ", scripted " & $scripted
-             elif external: ", external" else: ""), ")"
-        elif payload{"type"}.getStr() == "decision":
+        if payload{"type"}.getStr() == "decision":
           let week = payload["week"].getInt()
           let action = payload["action"]
           if action.kind != JObject:
             raise newException(ContagionError,
               "decision action must be an object")
           withLock stateLock:
-            if state.external[slot] and week == state.pendingWeek and
+            if week == state.pendingWeek and
                 not state.pendingDecisions.hasKey(slot):
               let decision = parseDecision(state.sim, slot, action)
               var probe = state.sim
-              probe.applyDecision(slot, decision, false)
+              let scripted = payload{"source"}.getStr() == "scripted"
+              probe.applyDecision(slot, decision, scripted)
               state.pendingDecisions[slot] = decision
+              state.pendingScripted[slot] = scripted
       except CatchableError as error:
         echo "contagion: ignoring bad player frame: ", error.msg
     of ErrorEvent:
@@ -634,9 +566,6 @@ proc runGameServer*(config: GameConfig, runtimeConfig: RuntimeConfig) =
     raise newException(ContagionError, "tokens and players must align")
   state.config = config
   state.sim = initSim(config)
-  state.prompts = newSeq[string](config.players.len)
-  state.scripted = newSeq[ScriptKind](config.players.len)
-  state.external = newSeq[bool](config.players.len)
   state.pendingWeek = -1
   state.pendingDecisions = initTable[int, Decision]()
   runtimeConfigGlobal = runtimeConfig

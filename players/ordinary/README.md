@@ -1,6 +1,6 @@
 # Ordinary Contagion player
 
-This player receives a governor's private week prompt through `contagion.player.v2` and sends a complete weekly decision. The game validates actions, resolves all six seats simultaneously, and writes results and replay. The default backend uses the `sentinel` candidate. `POC_JEV=1` asks Jev System One to choose between complete `sentinel` and `laggard` decisions. `POC_ADAPTER_DIR` loads a Metta post-training adapter that generates action JSON. The published prompt and scripted players remain fieldable.
+This player receives a governor's private week observation through `contagion.player.v3` and sends a complete weekly decision. The game validates actions, resolves all six seats simultaneously, and writes results and replay. The default backend uses the `sentinel` candidate. `POC_JEV=1` asks Jev System One to choose between complete `sentinel` and `laggard` decisions. `POC_ADAPTER_DIR` loads a Metta post-training adapter that generates action JSON. The published prompt and scripted players remain fieldable.
 
 Build the local game and player images, then run a mixed roster from a manifest based on the downloaded certified package:
 

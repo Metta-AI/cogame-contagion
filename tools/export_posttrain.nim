@@ -2,7 +2,7 @@
 ## Usage: nim r --path:src tools/export_posttrain.nim OUTPUT GAMES [FIRST_SEED] [VARIANT]
 
 import std/[json, os, osproc, strutils]
-import contagion/[llm, sim]
+import contagion/[player_policy, rules, sim]
 
 const OperatorPrompt = "Protect your region's health and economy using the published case reports."
 const Variants = ["standard", "sprint"]
@@ -57,14 +57,15 @@ when isMainModule:
           parsed.testing == teacher.testing and
           parsed.borders == teacher.borders and
           parsed.aid.len == 0 and not parsed.corrected
+        let (system, user) = promptsFromView(sim.playerViewJson(seat),
+          OperatorPrompt)
         rows.add($(%*{
           "episode_id": "contagion-" & variant & "-" & $seed,
           "seed": "contagion-" & variant & "-" & $seed,
           "decision_id": rows.len,
           "prompt": [
-            {"role": "system", "content": systemPrompt(sim, seat)},
-            {"role": "user", "content": userPrompt(sim, seat,
-              OperatorPrompt)}
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
           ],
           "completion": [{"role": "assistant", "content": $completion}],
           "game": "contagion",

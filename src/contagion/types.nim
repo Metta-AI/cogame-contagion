@@ -34,9 +34,6 @@ type
     turnDelayMs*: int
     turnBudgetSeconds*: int ## hard wall-clock ceiling for one week
     playerConnectTimeoutSeconds*: float
-    model*: string
-    maxOutputTokens*: int
-    llmTimeoutSeconds*: int
 
   RegionState* = object
     ## One region as observed at the start of a week. `gates` is indexed by
@@ -103,10 +100,7 @@ proc defaultGameConfig*(): GameConfig =
     episodeTimeoutSeconds: 1200,
     turnDelayMs: 300,
     turnBudgetSeconds: 35,
-    playerConnectTimeoutSeconds: 180,
-    model: "claude-sonnet-5",
-    maxOutputTokens: 900,
-    llmTimeoutSeconds: 25
+    playerConnectTimeoutSeconds: 180
   )
 
 proc update*(config: var GameConfig, configJson: string) =
@@ -141,12 +135,6 @@ proc update*(config: var GameConfig, configJson: string) =
   if node.hasKey("player_connect_timeout_seconds"):
     config.playerConnectTimeoutSeconds =
       node["player_connect_timeout_seconds"].getFloat()
-  if node.hasKey("model"):
-    config.model = node["model"].getStr()
-  if node.hasKey("maxOutputTokens"):
-    config.maxOutputTokens = node["maxOutputTokens"].getInt()
-  if node.hasKey("llmTimeoutSeconds"):
-    config.llmTimeoutSeconds = node["llmTimeoutSeconds"].getInt()
   ## `weeks` is NOT validated here: sampleEpisode clamps it to MinWeeks ..
   ## MaxWeeks, and it already clamped the upper bound silently. Raising on
   ## the lower bound only killed the container with no results and no replay

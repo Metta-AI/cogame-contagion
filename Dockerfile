@@ -1,6 +1,6 @@
 # Contagion game + player image. One image, two entrypoints:
 #   /bin/contagion         - the game server (default)
-#   /bin/contagion-player  - the prompt-delivery player
+#   /bin/contagion-player  - the prompt and scripted action player
 FROM debian:bookworm-slim AS build
 
 RUN apt-get update && \

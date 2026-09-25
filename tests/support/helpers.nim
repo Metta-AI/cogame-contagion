@@ -3,9 +3,9 @@
 ## helper module sitting in that glob would be executed as a test.
 
 import std/[json, unittest]
-import contagion/[llm, sim]
+import contagion/[rules, sim]
 
-export json, sim, llm
+export json, sim, rules
 
 proc fixtureConfig*(weeks = 20, seed = 0, talk = true): GameConfig =
   result = defaultGameConfig()
