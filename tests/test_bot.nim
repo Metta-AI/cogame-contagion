@@ -4,9 +4,9 @@
 ## must also be honest: a baseline that peeked at the true infection counts
 ## would be cheating, and the game would stop being about information.
 
-import std/[json, monotimes, net, os, strutils, times, unicode, unittest]
+import std/[json, monotimes, strutils, times, unicode, unittest]
 import support/helpers
-import contagion/server
+import contagion/player_policy
 
 proc totals(sim: Sim): tuple[deaths: int64, meanScore: int64] =
   var deaths = 0'i64
@@ -259,122 +259,28 @@ suite "reply parsing":
     check parseScriptKind("") == skNone
     check parseScriptKind("something else") == skNone
 
-  test "the batch falls back to sentinel for every seat with no credentials":
-    let config = fixtureConfig(weeks = 8, seed = 3)
-    let client = newLlmClient(config)
-    check client.disabled
-    var sim = initSim(config)
-    let seats = sim.pendingSeats()
-    let batch = client.decideAll(sim, seats,
-      @["be bold", "", "", "", "", ""],
-      @[skNone, skNone, skLaggard, skNone, skNone, skNone])
-    check batch.decisions.len == Seats
-    ## Compare against the PRE-BATCH view: applying a seat's decision mutates
-    ## the sim the next seat's baseline would read.
-    let view = sim
-    for index, seat in seats:
-      let kind = if seat == 2: skLaggard else: skSentinel
-      check batch.decisions[index] == scriptedDecision(view, seat, kind)
-      check batch.scripted[index]
-      sim.applyDecision(seat, batch.decisions[index], true)
-    check sim.week == 1
+  test "both player baselines match the rules from private views":
+    for seed in [1, 7, 42, 1234]:
+      var sim = initSim(fixtureConfig(weeks = 20, seed = seed))
+      while not sim.done:
+        let snapshot = sim
+        for seat in snapshot.pendingSeats():
+          let view = snapshot.playerViewJson(seat)
+          for kind in [skSentinel, skLaggard]:
+            let action = scriptedActionFromView(view, kind)
+            let parsed = parseDecision(snapshot, seat, action)
+            check parsed == scriptedDecision(snapshot, seat, kind)
+          let decision = scriptedDecision(snapshot, seat,
+            if seat mod 2 == 0: skSentinel else: skLaggard)
+          sim.applyDecision(seat, decision, true)
 
-  test "a seat that exhausts its retry is recorded as scripted in the replay":
-    ## The transport is real and the endpoint is dead, so every seat burns
-    ## both attempts and takes the sentinel fallback. The batch has to SAY it
-    ## fell back: the seats are registered as LLM policies, so nothing in the
-    ## registration distinguishes the fallback move from a model reply, and
-    ## the `dial` event is the only record phase 60 can count.
-    putEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", "http://127.0.0.1:1")
-    defer: delEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
-    let config = fixtureConfig(weeks = 8, seed = 5)
-    let client = newLlmClient(config)
-    check not client.disabled
-    var sim = initSim(config)
-    let seats = sim.pendingSeats()
-    let batch = client.decideAll(sim, seats, @["", "", "", "", "", ""],
-      @[skNone, skNone, skNone, skNone, skNone, skNone], budgetSeconds = 10)
-    let view = sim
-    for index, seat in seats:
-      check batch.scripted[index]
-      check batch.decisions[index] == scriptedDecision(view, seat, skSentinel)
-      ## Exactly what the server does with the batch.
-      sim.applyDecision(seat, batch.decisions[index], batch.scripted[index])
-    var dials = 0
-    for event in sim.events:
-      if event.kind != evDial:
-        continue
-      inc dials
-      check event.scripted
-      check event.eventToJson()["scripted"].getBool()
-    check dials == Seats
-
-  test "the week's batch is bounded by the week budget, not by llmTimeoutSeconds":
-    ## config_schema permits llmTimeoutSeconds up to 300 while
-    ## turnBudgetSeconds maxes at 120, so an unclamped first batch could
-    ## outrun the week it belongs to. The endpoint below accepts the TCP
-    ## connection and never answers, which is the case a connection-refused
-    ## endpoint cannot exercise: only the timeout can end it.
-    var listener = newSocket()
-    listener.setSockOpt(OptReuseAddr, true)
-    listener.bindAddr(Port(0), "127.0.0.1")
-    listener.listen(32)
-    let port = listener.getLocalAddr()[1]
-    defer: listener.close()
-    putEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME",
-      "http://127.0.0.1:" & $port.int)
-    defer: delEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
-    var config = fixtureConfig(weeks = 8, seed = 11)
-    config.llmTimeoutSeconds = 60
-    let client = newLlmClient(config)
-    check not client.disabled
-    var sim = initSim(config)
-    let seats = sim.pendingSeats()
-    let started = getMonoTime()
-    let batch = client.decideAll(sim, seats, @["", "", "", "", "", ""],
-      @[skNone, skNone, skNone, skNone, skNone, skNone], budgetSeconds = 5)
-    let elapsed = (getMonoTime() - started).inMilliseconds
-    echo "silent-endpoint batch: ", elapsed, " ms (llmTimeoutSeconds 60, ",
-      "week budget 5)"
-    ## Unclamped this would be 60 s for the first batch alone; clamped it is
-    ## the 5 s budget plus the bounded 5..10 s retry.
-    check elapsed < 30_000
-    for index, _ in seats:
-      check batch.scripted[index]
-
-  test "a seat whose container never connected plays the sentinel baseline":
-    ## design.md:320-324: the game starts after player_connect_timeout_seconds
-    ## with whoever is there, and unconnected seats are treated as
-    ## PLAYER_SCRIPTED=sentinel — not as an LLM policy with an empty prompt.
-    var scripted = @[skNone, skNone, skLaggard, skSentinel, skNone, skNone]
-    pinUnconnectedSeats(scripted, @[true, false, false, false, true, false])
-    check scripted == @[skNone, skSentinel, skLaggard, skSentinel, skNone,
-      skSentinel]
-    ## A short `connected` (no sockets at all yet) pins every open seat.
-    var none = @[skNone, skNone, skLaggard, skNone, skNone, skNone]
-    pinUnconnectedSeats(none, @[])
-    check none == @[skSentinel, skSentinel, skLaggard, skSentinel, skSentinel,
-      skSentinel]
-
-  test "the prompt carries the seat's own table and nothing hidden":
-    var sim = initSim(fixtureConfig(weeks = 8, seed = 7))
-    for seat in sim.pendingSeats():
-      var decision = flatDecision(lockdown = 1, testing = 2)
-      decision.say = "hello from " & RegionNames[sim.posOf[seat]]
-      sim.applyDecision(seat, decision, true)
-    let seat = 0
-    let text = sim.userPrompt(seat, "operator says hi")
-    check RegionNames[sim.posOf[seat]] in text
-    check "operator says hi" in text
-    check "YOUR HISTORY" in text
-    check "PUBLIC AID LEDGER" in text
-    ## Talk is public: every other governor's line is in the prompt.
-    for pos in 0 ..< Regions:
-      check ("hello from " & RegionNames[pos]) in text
-    ## And no policy display name, ever.
+  test "player prompts consume only the private observation":
+    let sim = initSim(fixtureConfig(weeks = 8, seed = 7))
+    let view = sim.playerViewJson(0)
+    let (system, user) = promptsFromView(view, "operator says hi")
+    check sim.regionOf(0) in system
+    check "operator says hi" in user
+    check "confirmed" in user
+    check "infected" notin user
     for player in sim.config.players:
-      check player.name notin text
-    let system = sim.systemPrompt(seat)
-    check "GOVERNOR of " & RegionNames[sim.posOf[seat]] in system
-    check "begin with the character {" in system
-    check "12%" in system
+      check player.name notin user

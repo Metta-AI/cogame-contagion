@@ -22,7 +22,7 @@ SOURCE_URL = "https://github.com/Metta-AI/cogame-contagion/tree/main"
 SEATS = 6
 
 DESCRIPTION = (
-    "Contagion: six governors, one epidemic, nine roads. Six LLM-piloted governors each run one "
+    "Contagion: six governors, one epidemic, nine roads. Six player policies each run one "
     "region of a six-node road network (the 6-cycle plus its three long diagonals, so every "
     "region has exactly two main roads and one back road and no seat is structurally stuck) for "
     "twenty weeks. Every week, simultaneously, each governor sets three dials - lockdown 0..4, "
@@ -39,12 +39,10 @@ DESCRIPTION = (
     "death; it can be negative, because an uncontrolled epidemic loses more than the region ever "
     "earned. All arithmetic is integer parts-per-million, which is what lets the static wasm replay "
     "viewer re-derive every frame in the browser and check it field-for-field against the record. "
-    "The game is LLM-driven: every week the server sends each seat's policy prompt plus its view to "
-    "Claude as ONE parallel batch, so A POLICY IS JUST A PROMPT - build one by reusing the published "
-    "player runnable and setting the PLAYER_PROMPT environment variable to your strategy. Two "
-    "scripted baselines (sentinel, the threshold dial policy, and laggard, the leaky neighbour that "
-    "never tests and never closes) play any seat that registers as scripted - and every seat when no "
-    "LLM credentials are available, so episodes always complete."
+    "Every player receives its private governor view and submits a complete weekly action. "
+    "The bundled player can use a PLAYER_PROMPT strategy or a scripted sentinel or laggard policy; "
+    "the ordinary Python player can rank complete decisions with Jev or run a trained policy. "
+    "The game validates actions and resolves all six seats simultaneously."
 )
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -177,14 +175,14 @@ eradication - banking GDP in the clean weeks is precisely the reward for having 
 
 PROTOCOL = """# Contagion protocols
 
-## contagion.player.v1 (the player websocket)
+## contagion.player.v3 (the player websocket)
 
-A policy is a prompt; the player container's only job is to deliver it. JSON text frames over the
+A player chooses a complete weekly action. JSON text frames over the
 websocket named by COWORLD_PLAYER_WS_URL (already carrying ?slot=N&token=T).
 
 game -> player:
 
-- `{"type":"welcome","protocol":"contagion.player.v1","slot":N,"name":"<region alias>","pos":P,
+- `{"type":"welcome","protocol":"contagion.player.v3","slot":N,"name":"<region alias>","pos":P,
   "neighbours":["<alias>","<alias>","<alias>"],"weeks":20}` on connect.
 - `{"type":"state", ...}` after every event: `week`, `weeks`, `weeksPlayed`, `variant`, your
   `region` and `pos`, the six `regions` and the nine `map` edges, `own` (confirmed, confirmedNew,
@@ -193,19 +191,18 @@ game -> player:
   hospital band as a word, score), `others` (per region: alias, pos, confirmed, confirmedNew,
   deaths, gdp, score, lockdown, testing, gates), `aidLastWeek`, `aidTotals`, `heard`, `notes`,
   `history`, `phase`, `done`, `reason`. This frame is REDACTED: no true infection counts anywhere,
-  no other region's hospital band, no other seat's notes, and no policy display names. The prompt
-  the server builds for that seat carries exactly this information and no more.
+  no other region's hospital band, no other seat's notes, and no policy display names.
+- `{"type":"turn","week":N,"view":{...}}` sends that private observation to each player.
+- `{"type":"decision_result","week":N,"accepted":bool}` acknowledges a submitted action.
 - `{"type":"final","done":true,"scores":[...],"gdp":[...],"deaths":[...],"regions":[...],
   "names":[6 region ALIASES],"weeks":N,"reason":"complete|deadline"}` at the end, after which the
   player should exit.
 
 player -> game:
 
-- `{"type":"prompt","prompt":"<at most 4000 chars>","scripted":"<at most 32 chars>"}`, sent
-  immediately on connect and again after `welcome` (the re-send covers the slot-registration race).
-  `scripted` of `sentinel` / `1` / `true` / `yes` registers the threshold baseline for that seat,
-  `laggard` the leaky one, and `""` means LLM-driven. The reference player reads PLAYER_PROMPT and
-  PLAYER_SCRIPTED from its environment.
+- `{"type":"decision","week":N,"action":{...},"source":"player|scripted"}`. The game
+  validates the action and applies it during the simultaneous weekly resolution. The bundled player
+  reads PLAYER_PROMPT or PLAYER_SCRIPTED from its own environment.
 
 ## The global spectator websocket
 
@@ -293,9 +290,6 @@ MANIFEST = {
             "type": "game",
             "image": IMAGE,
             "run": ["/bin/contagion"],
-            "env": {
-                "ANTHROPIC_API_KEY_URI": "secret://coworld/contagion/anthropic_api_key"
-            },
             "source_url": SOURCE_URL,
         },
         "config_schema": {
@@ -353,7 +347,7 @@ MANIFEST = {
                     "default": 1200,
                 },
                 "turnBudgetSeconds": {
-                    "description": "Hard wall-clock ceiling for one week: the LLM batch plus its single bounded retry plus the apply and the pacing delay.",
+                    "description": "Hard wall-clock ceiling for one week of player decisions and resolution.",
                     "type": "integer",
                     "minimum": 5,
                     "maximum": 120,
@@ -365,23 +359,6 @@ MANIFEST = {
                     "minimum": 0,
                     "maximum": 10000,
                     "default": 300,
-                },
-                "model": {
-                    "description": "Claude model that drives every seat.",
-                    "type": "string",
-                    "default": "claude-sonnet-5",
-                },
-                "maxOutputTokens": {
-                    "type": "integer",
-                    "minimum": 64,
-                    "maximum": 2000,
-                    "default": 900,
-                },
-                "llmTimeoutSeconds": {
-                    "type": "integer",
-                    "minimum": 5,
-                    "maximum": 300,
-                    "default": 25,
                 },
                 "player_connect_timeout_seconds": {
                     "type": "number",
@@ -478,12 +455,13 @@ MANIFEST = {
         player_runnable(
             "contagion-player",
             "Contagion Prompt Player",
-            "The reference Contagion policy: delivers its PLAYER_PROMPT (or a default suppress-then-reopen strategy in words) to the game and spectates until the final frame. Field your own policy by uploading this same image with a different PLAYER_PROMPT.",
+            "The reference Contagion policy: reads its private view, uses PLAYER_PROMPT (or a default strategy) to choose and submit an action. Field your own policy with a different PLAYER_PROMPT.",
+            {"ANTHROPIC_API_KEY_URI": "secret://coworld/contagion/anthropic_api_key"},
         ),
         player_runnable(
             "contagion-sentinel",
             "Contagion Sentinel Baseline",
-            "The scripted threshold baseline as a fieldable policy: de-bias your own reported cases, step lockdown and testing at fixed prevalence thresholds, gate each road against its neighbour's de-biased estimate, never talk and never send aid. The game server plays it deterministically, no LLM involved, and it is also the universal fallback move.",
+            "The scripted threshold baseline as a fieldable player policy: de-bias reported cases, set dials and gates, never talk or send aid. The game uses the same public rules only for missing-action fallback.",
             {"PLAYER_SCRIPTED": "sentinel"},
         ),
         player_runnable(

@@ -1,21 +1,9 @@
-## Contagion player: a policy is just a prompt.
-##
-## Connects to the game, delivers its prompt (from PLAYER_PROMPT, or a default
-## outbreak strategy), then idles until the final frame. All of the actual
-## decision making happens inside the game server, which sends this seat's
-## prompt to Claude once a week, in one parallel batch with the other five.
-##
-## PLAYER_SCRIPTED=sentinel (or 1) registers the seat as the built-in
-## threshold baseline instead; PLAYER_SCRIPTED=laggard as the leaky
-## neighbour. The server plays those deterministically, no LLM.
-##
-## To field your own policy, reuse this image and set PLAYER_PROMPT:
-##   coworld upload-policy <contagion-image> --name my-contagion \
-##     --run /bin/contagion-player --secret-env PLAYER_PROMPT="<your strategy>"
+## Bundled Contagion prompt and scripted players. Every decision comes from
+## the ordinary private view and is submitted through the player WebSocket.
 
-import
-  std/[json, options, os, strutils],
-  whisky
+import std/[json, options, os, strutils]
+import whisky
+import contagion/[rules, player_policy]
 
 const DefaultPrompt = """
 Suppress early and cheaply, then reopen. Every week convert your reported
@@ -42,51 +30,46 @@ when isMainModule:
   var prompt = getEnv("PLAYER_PROMPT")
   if prompt.len == 0:
     prompt = DefaultPrompt
-  let scripted = getEnv("PLAYER_SCRIPTED").strip()
-
-  proc promptFrame(): string =
-    $ %*{"type": "prompt", "prompt": prompt, "scripted": scripted}
-
-  echo "contagion player: connecting to game"
+  let scripted = parseScriptKind(getEnv("PLAYER_SCRIPTED"))
+  let client =
+    if scripted != skNone: nil
+    else: newLlmClient(
+      getEnv("PLAYER_MODEL", "claude-sonnet-5"),
+      parseInt(getEnv("PLAYER_MAX_OUTPUT_TOKENS", "900")),
+      parseInt(getEnv("PLAYER_TIMEOUT_SECONDS", "25")))
   let socket = newWebSocket(url)
-  socket.send(promptFrame())
-  echo "contagion player: prompt delivered (", prompt.len, " chars",
-    (if scripted.len > 0: ", scripted " & scripted else: ""), ")"
-
-  ## whisky's receiveMessage RAISES on a close frame or a truncated read
-  ## (only a timeout returns none), and mummy's send merely queues — the
-  ## game's quit(0) can outrun the flushed final frame. A dead socket is a
-  ## normal end of episode, not a player failure, so the whole loop degrades
-  ## to a clean exit 0.
-  try:
-    while true:
-      let received = socket.receiveMessage()
-      if received.isNone:
-        echo "contagion player: connection closed, exiting"
-        break
-      let message = received.get()
-      if message.kind != TextMessage:
-        continue
-      try:
-        let payload = parseJson(message.data)
-        case payload{"type"}.getStr()
-        of "welcome":
-          echo "contagion player: seated at slot ",
-            payload{"slot"}.getInt(), " as governor of ",
-            payload{"name"}.getStr()
-          ## Re-deliver the prompt after the welcome, in case the first send
-          ## raced the server's slot registration.
-          socket.send(promptFrame())
-        of "final":
-          echo "contagion player: final scores ", payload{"scores"}
-          break
-        else:
-          discard
-      except CatchableError as error:
-        echo "contagion player: ignoring bad frame: ", error.msg
-  except CatchableError as error:
-    echo "contagion player: socket ended (", error.msg, "), exiting"
-  try:
-    socket.close()
-  except CatchableError:
-    discard
+  var slot = -1
+  while true:
+    let received = socket.receiveMessage()
+    if received.isNone:
+      break
+    let message = received.get()
+    if message.kind != TextMessage:
+      continue
+    let payload = parseJson(message.data)
+    case payload{"type"}.getStr()
+    of "welcome":
+      slot = payload["slot"].getInt()
+      echo "contagion player: seated at slot ", payload["slot"].getInt(),
+        " as governor of ", payload["name"].getStr()
+    of "turn":
+      let view = payload["view"]
+      let fallback = scripted != skNone or client.disabled
+      let action =
+        if fallback: scriptedActionFromView(view,
+          (if scripted == skNone: skSentinel else: scripted))
+        else: client.choosePromptAction(view, prompt, slot)
+      socket.send($ %*{
+        "type": "decision", "week": payload["week"],
+        "source": (if fallback: "scripted" else: "player"),
+        "action": action
+      })
+    of "decision_result":
+      if not payload["accepted"].getBool():
+        raise newException(ValueError, "game rejected player action")
+    of "final":
+      echo "contagion player: final scores ", payload["scores"]
+      break
+    else:
+      discard
+  socket.close()

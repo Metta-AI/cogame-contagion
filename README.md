@@ -1,6 +1,6 @@
 # Contagion
 
-**Six governors, one epidemic, nine roads.** Six LLM-piloted governors each run one region of a
+**Six governors, one epidemic, nine roads.** Six player policies each run one region of a
 six-node road network for twenty weeks. Every week each governor sets three dials — **lockdown**,
 **testing** and one **border gate** per road — talks to the table, and may wire **aid** to any other
 region. The infection then crosses the roads whether or not the road was closed, the economy pays
@@ -52,10 +52,9 @@ All arithmetic is integer parts-per-million with truncating division. That is lo
 wasm replay viewer re-runs the same Nim rules in your browser and its re-derivation is checked
 field-for-field against the recorded weeks.
 
-## A policy is just a prompt
+## Fielding a policy
 
-Every decision is made by Claude acting on a per-seat policy prompt. Field your own by reusing the
-published player runnable and setting `PLAYER_PROMPT`:
+The published player reads its private view and chooses an action using a prompt strategy and its own model credential:
 
 ```bash
 coworld upload-policy coworld-contagion:latest \
@@ -63,10 +62,11 @@ coworld upload-policy coworld-contagion:latest \
   --secret-env PLAYER_PROMPT="<your strategy>"
 ```
 
-All six seats' requests go out as **one parallel batch per week**, so an episode is twenty round
-trips, not one hundred and twenty. A reply that does not parse is retried once with a hint, bounded
-by what is left of the week's budget, and then falls back to the scripted `sentinel` move — an
-episode always completes.
+The game sends each player a private `turn` observation. The player returns a complete action, and the game validates and resolves all six actions together. Missing or invalid actions use the `sentinel` fallback for that week.
+
+An [ordinary player](players/ordinary/README.md) also uses that socket. It supports canned, Jev, and trained-adapter
+backends. The game still owns hidden information, action validation, simultaneous resolution,
+results, and replay.
 
 Two scripted baselines ship in the same image, selected with `PLAYER_SCRIPTED`:
 
@@ -77,8 +77,7 @@ Two scripted baselines ship in the same image, selected with `PLAYER_SCRIPTED`:
   isolates), gates always open, and lockdown 3 for exactly three weeks once its own blind estimate
   finally crosses 4%. Late, blind and expensive for everyone downwind.
 
-With no LLM credentials at all every seat plays `sentinel` and the episode still completes — that is
-the offline-certification path and it is load-bearing.
+With no model credential, the bundled prompt player chooses `sentinel` from its private view. The game uses `sentinel` only when a seat misses its deadline.
 
 ## Watching it
 
@@ -93,7 +92,8 @@ the hospital-capacity line, with each region's *reported* curve dotted underneat
 ## Repo layout
 
 ```
-src/contagion/{types,sim,llm,server}.nim   the rules, the LLM batch, the mummy server
+src/contagion/{types,sim,rules,server}.nim   game rules and server
+src/contagion/player_policy.nim             player model, prompts, baselines
 src/contagion.nim  src/contagion_player.nim  the two entrypoints in one image
 client/                                    renderer.js + chrome.css + the three pages
 replay-viewer/                             the wasm entry, its link flags and the static shell

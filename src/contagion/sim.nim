@@ -769,6 +769,7 @@ proc historyRowsJson(sim: Sim, pos: int): JsonNode =
       "week": week,
       "confirmed": region.confirmed,
       "confirmedNew": region.confirmedNew,
+      "deaths": region.dead,
       "deathsWeek": region.deathsWeek,
       "lockdown": region.lockdown,
       "testing": region.testing,

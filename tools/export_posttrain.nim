@@ -2,7 +2,7 @@
 ## Usage: nim r --path:src tools/export_posttrain.nim OUTPUT GAMES [FIRST_SEED] [VARIANT]
 
 import std/[json, os, osproc, strutils]
-import contagion/[llm, sim]
+import contagion/[player_policy, rules, sim]
 
 const OperatorPrompt = "Protect your region's health and economy using the published case reports."
 const Variants = ["standard", "sprint"]
@@ -51,32 +51,21 @@ when isMainModule:
       for seat in pending:
         let teacher = scriptedDecision(sim, seat,
           if seat mod 2 == 0: skSentinel else: skLaggard)
-        let pos = sim.posOf[seat]
-        var borders = newJObject()
-        for slot in 0 ..< Degree:
-          let neighbour = otherEnd(NeighboursOf[pos][slot], pos)
-          borders[RegionNames[neighbour]] = %teacher.borders[slot]
-        let completion = %*{
-          "lockdown": teacher.lockdown,
-          "testing": teacher.testing,
-          "borders": borders,
-          "aid": [],
-          "say": teacher.say,
-          "notes": teacher.notes
-        }
+        let completion = decisionJson(sim, seat, teacher)
         let parsed = parseDecision(sim, seat, completion)
         doAssert parsed.lockdown == teacher.lockdown and
           parsed.testing == teacher.testing and
           parsed.borders == teacher.borders and
           parsed.aid.len == 0 and not parsed.corrected
+        let (system, user) = promptsFromView(sim.playerViewJson(seat),
+          OperatorPrompt)
         rows.add($(%*{
           "episode_id": "contagion-" & variant & "-" & $seed,
           "seed": "contagion-" & variant & "-" & $seed,
           "decision_id": rows.len,
           "prompt": [
-            {"role": "system", "content": systemPrompt(sim, seat)},
-            {"role": "user", "content": userPrompt(sim, seat,
-              OperatorPrompt)}
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
           ],
           "completion": [{"role": "assistant", "content": $completion}],
           "game": "contagion",

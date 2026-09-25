@@ -3,7 +3,7 @@
 ## baseline all at once, so "they look about right" is not good enough. This
 ## is the grid harness that settles them.
 ##
-## It sweeps the two threshold families in `llm.nim` — the OWN-prevalence cuts
+## It sweeps the two threshold families in `rules.nim` — the OWN-prevalence cuts
 ## that set lockdown and testing, and the NEIGHBOUR-prevalence cuts that set
 ## the gates — over a x0.25 .. x4 grid, five seeds a cell, six seats a seed,
 ## every episode played to its natural end. The shipped constants must be the
@@ -30,7 +30,7 @@ type Thresholds = object
   road: int64  ## scales SentinelRoadCutsPpm
 
 proc tunedDecision(sim: Sim, seat: int, t: Thresholds): Decision =
-  ## `sentinelDecision` (llm.nim) with its two threshold families scaled. The
+  ## `sentinelDecision` (rules.nim) with its two threshold families scaled. The
   ## CUTS come from the shipped constants, not from copied literals, so the
   ## only thing this can drift on is the branch structure — which the first
   ## test below pins decision-for-decision.
