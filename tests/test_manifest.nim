@@ -89,7 +89,7 @@ suite "the manifest":
       check protocols.hasKey(key)
       check protocols[key]["type"].getStr() == "text"
       check protocols[key]["value"].getStr().len > 200
-    check "contagion.player.v1" in protocols["player"]["value"].getStr()
+    check "contagion.player.v2" in protocols["player"]["value"].getStr()
     check "/global" in protocols["global"]["value"].getStr()
 
     let docs = manifest["game"]["docs"]

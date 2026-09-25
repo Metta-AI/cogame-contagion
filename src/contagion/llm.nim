@@ -211,6 +211,25 @@ proc scriptedDecision*(sim: Sim, seat: int, kind: ScriptKind): Decision =
   of skLaggard: laggardDecision(sim, seat)
   else: sentinelDecision(sim, seat)
 
+proc decisionJson*(sim: Sim, seat: int, decision: Decision): JsonNode =
+  ## Complete player action for the seat's three named roads.
+  let pos = sim.posOf[seat]
+  var borders = newJObject()
+  for slot in 0 ..< Degree:
+    let neighbour = otherEnd(NeighboursOf[pos][slot], pos)
+    borders[RegionNames[neighbour]] = %decision.borders[slot]
+  var aid = newJArray()
+  for transfer in decision.aid:
+    aid.add(%*{"to": RegionNames[transfer.to], "amount": transfer.amount})
+  result = %*{
+    "lockdown": decision.lockdown,
+    "testing": decision.testing,
+    "borders": borders,
+    "aid": aid,
+    "say": decision.say,
+    "notes": decision.notes
+  }
+
 # ---- Prompt building --------------------------------------------------------
 
 proc ppmPercent(value: int64): string =

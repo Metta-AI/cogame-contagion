@@ -51,19 +51,7 @@ when isMainModule:
       for seat in pending:
         let teacher = scriptedDecision(sim, seat,
           if seat mod 2 == 0: skSentinel else: skLaggard)
-        let pos = sim.posOf[seat]
-        var borders = newJObject()
-        for slot in 0 ..< Degree:
-          let neighbour = otherEnd(NeighboursOf[pos][slot], pos)
-          borders[RegionNames[neighbour]] = %teacher.borders[slot]
-        let completion = %*{
-          "lockdown": teacher.lockdown,
-          "testing": teacher.testing,
-          "borders": borders,
-          "aid": [],
-          "say": teacher.say,
-          "notes": teacher.notes
-        }
+        let completion = decisionJson(sim, seat, teacher)
         let parsed = parseDecision(sim, seat, completion)
         doAssert parsed.lockdown == teacher.lockdown and
           parsed.testing == teacher.testing and

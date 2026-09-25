@@ -52,10 +52,9 @@ All arithmetic is integer parts-per-million with truncating division. That is lo
 wasm replay viewer re-runs the same Nim rules in your browser and its re-derivation is checked
 field-for-field against the recorded weeks.
 
-## A policy is just a prompt
+## Fielding a policy
 
-Every decision is made by Claude acting on a per-seat policy prompt. Field your own by reusing the
-published player runnable and setting `PLAYER_PROMPT`:
+The published player can register a prompt for the game-hosted Claude client:
 
 ```bash
 coworld upload-policy coworld-contagion:latest \
@@ -63,10 +62,13 @@ coworld upload-policy coworld-contagion:latest \
   --secret-env PLAYER_PROMPT="<your strategy>"
 ```
 
-All six seats' requests go out as **one parallel batch per week**, so an episode is twenty round
-trips, not one hundred and twenty. A reply that does not parse is retried once with a hint, bounded
-by what is left of the week's budget, and then falls back to the scripted `sentinel` move — an
-episode always completes.
+The game sends all prompt-player requests in one parallel batch per week. A reply that does not
+parse is retried once, then falls back to `sentinel`.
+
+An [ordinary player](players/ordinary/README.md) can instead receive its private week prompt and
+send a complete action through the player socket. It supports canned, Jev, and trained-adapter
+backends. The game still owns hidden information, action validation, simultaneous resolution,
+results, and replay.
 
 Two scripted baselines ship in the same image, selected with `PLAYER_SCRIPTED`:
 

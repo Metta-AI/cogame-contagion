@@ -18,16 +18,22 @@ sentinel and laggard scripts alternate by seat. Every reply passes through the
 hosted parser before its action advances the native simulator. The exporter
 refuses an existing output directory.
 
-Train the text policy with Metta's post-training CLI:
+From a Metta checkout, train the text policy with its post-training CLI:
 
 ```bash
-uv run python -m metta_posttrain.train --dataset /tmp/contagion-standard \
+uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
+  --dataset /tmp/contagion-standard \
   --output /tmp/contagion-model --model Qwen/Qwen2.5-0.5B-Instruct \
   --max-steps 100 --max-length 4096
 ```
 
 The dataset is imitation of scripted play; its loss does not measure policy
 quality.
+
+The [ordinary player](players/ordinary/README.md) can collect accepted actions from real local
+episodes through the standard Coworld policy artifact URL. Its exporter keeps complete game seeds
+in one train or validation split. The same player can load the resulting adapter and submit its
+decisions through `contagion.player.v2`. Jev selects complete weekly actions through that socket.
 
 ## Numeric reinforcement learning
 
