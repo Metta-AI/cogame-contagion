@@ -1,4 +1,4 @@
-"""One native Contagion game with Jev, prompt, and scripted player processes."""
+"""One native Contagion game with canned, prompt, and scripted player processes."""
 
 import json
 import os
@@ -21,22 +21,10 @@ class ModelStub(BaseHTTPRequestHandler):
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         slot = self.headers["X-Coworld-Player-Slot"]
         self.calls.append((self.path, slot))
-        if self.path == "/v1/systemone":
-            choices = len(request["questions"]["action"]["criteria"])
-            selected = 1 if choices > 1 else 0
-            probabilities = {
-                str(index): float(index == selected) for index in range(choices)
-            }
-            payload = {
-                "answers": {
-                    "action": {"type": "choice", "probabilities": probabilities}
-                }
-            }
-        else:
-            assert self.path.startswith("/model/") and self.path.endswith("/invoke")
-            payload = {
-                "content": [{"type": "text", "text": '{"lockdown":1,"testing":2,"borders":{},"aid":[],"say":"","notes":""}'}]
-            }
+        assert self.path.startswith("/model/") and self.path.endswith("/invoke")
+        payload = {
+            "content": [{"type": "text", "text": '{"lockdown":1,"testing":2,"borders":{},"aid":[],"say":"","notes":""}'}]
+        }
         data = json.dumps(payload).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -119,10 +107,9 @@ def main() -> None:
                 env["COWORLD_PLAYER_WS_URL"] = (
                     f"ws://127.0.0.1:{game_port}/player?slot={seat}&token=t{seat}"
                 )
-                if seat < 2:
+                if seat == 1:
                     env["AWS_ENDPOINT_URL_BEDROCK_RUNTIME"] = stub_url
                 if seat == 0:
-                    env["POC_JEV"] = "1"
                     argv = [
                         sys.executable,
                         str(Path(__file__).parents[2] / "players/ordinary/player.py"),
@@ -146,12 +133,10 @@ def main() -> None:
             assert results["weeks"] == 4 and replay["events"]
             game_text = (work / "game.log").read_text()
             assert "using sentinel fallback" not in game_text
-            jev = [call for call in ModelStub.calls if call[0] == "/v1/systemone"]
             prompt = [call for call in ModelStub.calls if call[0].startswith("/model/")]
-            assert len(jev) == 4 and all(slot == "0" for _, slot in jev)
             assert len(prompt) == 4 and all(slot == "1" for _, slot in prompt)
             print(
-                "mixed episode: 4 Jev, 4 prompt, 16 scripted decisions; zero game fallback"
+                "mixed episode: 4 canned, 4 prompt, 16 scripted decisions; zero game fallback"
             )
         finally:
             for process in processes:
