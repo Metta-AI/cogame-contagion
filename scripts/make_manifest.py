@@ -41,7 +41,7 @@ DESCRIPTION = (
     "viewer re-derive every frame in the browser and check it field-for-field against the record. "
     "Every player receives its private governor view and submits a complete weekly action. "
     "The bundled player can use a PLAYER_PROMPT strategy or a scripted sentinel or laggard policy; "
-    "the ordinary Python player can rank complete decisions with Jev or run a trained policy. "
+    "the ordinary Python player can run a trained policy. "
     "The game validates actions and resolves all six seats simultaneously."
 )
 
