@@ -64,7 +64,7 @@ coworld upload-policy coworld-contagion:latest \
 
 The game sends each player a private `turn` observation. The player returns a complete action, and the game validates and resolves all six actions together. Missing or invalid actions use the `sentinel` fallback for that week.
 
-An [ordinary player](players/ordinary/README.md) also uses that socket. It supports canned, Jev, and trained-adapter
+An [ordinary player](players/ordinary/README.md) also uses that socket. It supports canned and trained-adapter
 backends. The game still owns hidden information, action validation, simultaneous resolution,
 results, and replay.
 
