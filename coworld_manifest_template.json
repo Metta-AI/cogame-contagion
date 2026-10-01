@@ -252,9 +252,7 @@
       "run": [
         "/bin/contagion-player"
       ],
-      "env": {
-        "ANTHROPIC_API_KEY_URI": "secret://coworld/contagion/anthropic_api_key"
-      },
+      "env": {},
       "resources": {
         "requests": {
           "cpu": "100m",
