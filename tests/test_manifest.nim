@@ -129,8 +129,8 @@ suite "the manifest":
     check runnable["image"].getStr() == "{{CONTAGION_IMAGE}}"
     check runnable["run"][0].getStr() == "/bin/contagion"
     check not runnable.hasKey("env")
-    check manifest["player"][0]["env"]["ANTHROPIC_API_KEY_URI"].getStr() ==
-      "secret://coworld/contagion/anthropic_api_key"
+    doAssert manifest{"player"}[0]{"env"}{"ANTHROPIC_API_KEY_URI"}.isNil,
+      "hosted LLM uses the platform sidecar without provider secrets"
     check manifest["game"]["name"].getStr() == "contagion"
     check not manifest["game"].hasKey("version")
     check manifest["tags"].len >= 3
