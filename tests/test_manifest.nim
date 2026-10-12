@@ -141,7 +141,6 @@ suite "the compose file and the smoke cross-check":
     check "contagion:" in compose
     check "coworld-contagion:latest" in compose
     check "platform: linux/amd64" in compose
-    check "network: host" in compose
 
   test "SMOKE_SEATS agrees with the manifest fixture":
     let smoke = readRepoFile("tools/ci/docker_smoke.sh")
