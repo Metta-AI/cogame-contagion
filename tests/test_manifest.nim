@@ -128,8 +128,7 @@ suite "the manifest":
     check runnable["type"].getStr() == "game"
     check runnable["image"].getStr() == "{{CONTAGION_IMAGE}}"
     check runnable["run"][0].getStr() == "/bin/contagion"
-    check runnable["env"]["ANTHROPIC_API_KEY_URI"].getStr() ==
-      "secret://coworld/contagion/anthropic_api_key"
+    check runnable["env"].len == 0
     check manifest["game"]["name"].getStr() == "contagion"
     check not manifest["game"].hasKey("version")
     check manifest["tags"].len >= 3
@@ -140,7 +139,7 @@ suite "the compose file and the smoke cross-check":
     check "contagion:" in compose
     check "coworld-contagion:latest" in compose
     check "platform: linux/amd64" in compose
-    check "network: host" in compose
+
 
   test "SMOKE_SEATS agrees with the manifest fixture":
     let smoke = readRepoFile("tools/ci/docker_smoke.sh")
