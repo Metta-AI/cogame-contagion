@@ -1,0 +1,19 @@
+{
+  "bank": "contagion-rules-v1",
+  "training": [
+    "canonical",
+    "plain",
+    "numbered",
+    "questions",
+    "reordered"
+  ],
+  "introductions": {
+    "canonical": "You are the governor of {region} in Contagion. ",
+    "plain": "In Contagion, you govern {region}. ",
+    "numbered": "Your role: governor. Your region: {region}. Game: Contagion. ",
+    "questions": "Which region do you govern? {region}. Which game are you playing? Contagion. ",
+    "reordered": "Contagion puts you in charge of {region} as its governor. ",
+    "heldout-briefing": "Take the role of governor responsible for {region} in Contagion. ",
+    "heldout-reference": "Contagion role reference: governor of {region}. "
+  }
+}

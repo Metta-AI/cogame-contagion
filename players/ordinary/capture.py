@@ -1,4 +1,4 @@
-"""Retain accepted player decisions in the standard Coworld artifact."""
+"""Retain private proposals and host execution evidence in the Coworld artifact."""
 
 from __future__ import annotations
 
@@ -19,9 +19,12 @@ class Capture:
         self.upload_url = os.environ["COWORLD_PLAYER_ARTIFACT_UPLOAD_URL"]
         self.rows: list[dict] = []
 
-    def record(self, system: str, user: str, action: dict, source: str, week: int) -> None:
+    def record(self, system: str, user: str, action: dict, source: str, week: int,
+               prompt_template: dict, execution_evidence: dict, model_response: str | None) -> None:
         self.rows.append({
             "decision_id": len(self.rows), "week": week, "source": source,
+            "prompt_template": prompt_template, "execution_evidence": execution_evidence,
+            "model_response": model_response,
             "prompt": [{"role": "system", "content": system},
                        {"role": "user", "content": user}],
             "completion": [{"role": "assistant", "content": json.dumps(action, sort_keys=True)}],
@@ -40,7 +43,8 @@ class Capture:
         if url.scheme == "file":
             target = Path(unquote(url.path))
             pending = target.with_name(target.name + ".tmp")
-            pending.write_bytes(data)
+            with os.fdopen(os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as output:
+                output.write(data)
             os.replace(pending, target)
         else:
             request = urllib.request.Request(self.upload_url, data=data, method="PUT",

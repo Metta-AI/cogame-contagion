@@ -1,8 +1,8 @@
 ## Contagion model, prompt, and scripted player policy from private views.
 
-import std/[json, os, strutils, unicode]
-import bitworld/runtime, curly
-import sim, rules
+import std/[json, os, strutils, times, unicode]
+import bitworld/[runtime, decision_trajectory], curly
+import sim, rules, prompts
 
 const
   AnthropicUrl = "https://api.anthropic.com/v1/messages"
@@ -228,9 +228,10 @@ proc scriptedActionFromView*(view: JsonNode, kind: ScriptKind): JsonNode =
   %*{"lockdown": lockdown, "testing": testing, "borders": borders,
      "aid": [], "say": "", "notes": ""}
 
-proc promptsFromView*(view: JsonNode, guidance: string): tuple[system, user: string] =
-  result.system = "You are the governor of " & view["region"].getStr() &
-    " in Contagion. Six governors set lockdown 0..4, testing 0..3, and " &
+proc promptsFromView*(view: JsonNode, guidance: string,
+    selection: PromptSelection): tuple[system, user: string] =
+  result.system = selection.introduction(view["region"].getStr()) &
+    "Six governors set lockdown 0..4, testing 0..3, and " &
     "three road gates 0..2 simultaneously each week. You may send up to " &
     "200 credits of aid and a short public message. True infection counts " &
     "are hidden; reported cases reflect each region's published testing. " &
@@ -243,16 +244,46 @@ proc promptsFromView*(view: JsonNode, guidance: string): tuple[system, user: str
     "\"say\": \"\", \"notes\": \"\"}. Only name your three roads."
 
 proc choosePromptAction*(client: LlmClient, view: JsonNode,
-    guidance: string, slot: int): JsonNode =
-  let (system, user) = promptsFromView(view, guidance)
+    guidance: string, slot: int, selection: PromptSelection): JsonNode =
+  let (system, user) = promptsFromView(view, guidance, selection)
   let request = client.requestFor(system, user, slot)
   var batch: RequestBatch
   batch.post(request.url, request.headers, request.body, "seat")
-  let responses = client.curl.makeRequests(batch, client.timeoutSeconds)
-  let reply = client.textOf(responses[0].response,
-    responses[0].error, request.url)
-  let first = reply.find('{')
-  let last = reply.rfind('}')
-  if first < 0 or last <= first:
-    raise newException(ContagionError, "no JSON action in response")
-  parseJson(reply[first .. last])
+  let traceDirectory = getEnv("CONTAGION_PLAYER_TRACE_DIR")
+  let identity = "seat-" & $slot & "-week-" & $view["week"].getInt()
+  let started = epochTime()
+  var evidence = %*{
+    "schema_version": 1, "event_type": "attempt_start", "attempt_id": identity,
+    "slot": slot, "week": view["week"], "visibility": "private",
+    "prompt": [{"role": "system", "content": system},
+      {"role": "user", "content": user}],
+    "prompt_template": selection.promptMetadata(system, user),
+    "request": parseJson(request.body), "model": client.model,
+    "platform_call_id": newJNull(), "behavior_logprobs": newJNull(),
+    "raw_response": newJNull(), "response": newJNull(),
+    "parsed_action": newJNull(), "transport_error": newJNull(),
+    "http_status": newJNull(), "failure": newJNull()
+  }
+  if traceDirectory.len > 0:
+    writePrivate(traceDirectory / (identity & "-start.json"), $evidence & "\n")
+  try:
+    let responses = client.curl.makeRequests(batch, client.timeoutSeconds)
+    evidence["raw_response"] = %responses[0].response.body
+    evidence["http_status"] = %responses[0].response.code
+    evidence["transport_error"] = %responses[0].error
+    let reply = client.textOf(responses[0].response,
+      responses[0].error, request.url)
+    evidence["response"] = %reply
+    let first = reply.find('{')
+    let last = reply.rfind('}')
+    if first < 0 or last <= first:
+      raise newException(ContagionError, "no JSON action in response")
+    result = parseJson(reply[first .. last])
+    evidence["parsed_action"] = copy(result)
+  finally:
+    evidence["event_type"] = %"attempt_finish"
+    evidence["latency_ms"] = %((epochTime() - started) * 1000)
+    if getCurrentExceptionMsg().len > 0:
+      evidence["failure"] = %getCurrentExceptionMsg()
+    if traceDirectory.len > 0:
+      writePrivate(traceDirectory / (identity & "-finish.json"), $evidence & "\n")

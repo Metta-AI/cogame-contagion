@@ -3,7 +3,7 @@
 
 import std/[json, options, os, strutils]
 import whisky
-import contagion/[rules, player_policy]
+import contagion/[rules, player_policy, prompts]
 
 const DefaultPrompt = """
 Suppress early and cheaply, then reopen. Every week convert your reported
@@ -58,7 +58,7 @@ when isMainModule:
       let action =
         if fallback: scriptedActionFromView(view,
           (if scripted == skNone: skSentinel else: scripted))
-        else: client.choosePromptAction(view, prompt, slot)
+        else: client.choosePromptAction(view, prompt, slot, promptSelection(payload["prompt_selection"]))
       socket.send($ %*{
         "type": "decision", "week": payload["week"],
         "source": (if fallback: "scripted" else: "player"),
