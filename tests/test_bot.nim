@@ -1,3 +1,4 @@
+import contagion/prompts
 ## The scripted baselines must play whole episodes without ever proposing an
 ## illegal move — they are both the no-credentials fallback (offline
 ## certification) and fieldable policies, so this is the completion path. They
@@ -277,7 +278,7 @@ suite "reply parsing":
   test "player prompts consume only the private observation":
     let sim = initSim(fixtureConfig(weeks = 8, seed = 7))
     let view = sim.playerViewJson(0)
-    let (system, user) = promptsFromView(view, "operator says hi")
+    let (system, user) = promptsFromView(view, "operator says hi", PromptSelection())
     check sim.regionOf(0) in system
     check "operator says hi" in user
     check "confirmed" in user

@@ -165,6 +165,7 @@ jobs:
           nim c -d:release --path:src -o:/tmp/contagion-oracle tools/policy_view_oracle.nim
           python3 tools/test_policy_view.py /tmp/contagion-oracle
           /tmp/contagion-venv/bin/python tools/ci/player_policy_smoke.py /tmp/contagion-game /tmp/contagion-player
+          /tmp/contagion-venv/bin/python tools/test_native_prompts.py /tmp/contagion-game /tmp/contagion-player /tmp/contagion-native-prompts --smoke
 
   # ---------------------------------------------------------------------
   # Packaging smoke: the production image builds, and one real episode runs

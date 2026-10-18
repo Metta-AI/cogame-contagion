@@ -23,7 +23,7 @@
 
 import
   std/[json, locks, os, sets, strutils, tables, times],
-  bitworld/runtime,
+  bitworld/[runtime, decision_trajectory],
   curly,
   mummy,
   mummy/routers,
@@ -33,12 +33,16 @@ import
 const
   ReplayVersion = 1
 
+import prompts
+
 type
   GameState = object
     config: GameConfig
+    promptSelection: PromptSelection
     sim: Sim
     pendingWeek: int
     pendingDecisions: Table[int, Decision]
+    pendingProposals: Table[int, JsonNode]
     pendingScripted: Table[int, bool]
     playerSockets: Table[int, WebSocket]
     socketSlots: Table[WebSocket, int]
@@ -284,6 +288,7 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
       withLock stateLock:
         state.pendingWeek = simCopy.week
         state.pendingDecisions.clear()
+        state.pendingProposals.clear()
         state.pendingScripted.clear()
         for seat in seats:
           if state.playerSockets.hasKey(seat):
@@ -291,6 +296,8 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
             state.playerSockets[seat].send($ %*{
               "type": "turn",
               "week": simCopy.week,
+              "prompt_selection": {"promptVariant": $state.promptSelection.variant,
+                "promptSeed": state.promptSelection.seed},
               "view": simCopy.playerViewJson(seat)
             })
       while epochTime() < decisionDeadline:
@@ -318,6 +325,7 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
         state.pendingWeek = -1
 
       withLock stateLock:
+        let firstEvent = state.sim.events.len
         for index, seat in seats:
           let decision = decisions[index]
           ## Replay records the source of the decision actually applied.
@@ -344,12 +352,33 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
             state.sim.applyDecision(seat, fallback, true)
             wasScripted[index] = true
             accepted[index] = false
+        var executed: array[Seats, JsonNode]
+        for eventIndex in firstEvent ..< state.sim.events.len:
+          let event = state.sim.events[eventIndex]
+          if event.kind == evDial:
+            executed[event.seat] = decisionJson(state.sim, event.seat, event.decision)
         state.broadcastLocked()
         for index, seat in seats:
+          let proposal = if state.pendingProposals.hasKey(seat):
+            state.pendingProposals[seat] else: newJNull()
+          let evidence = %*{
+            "schema_version": 1, "event_type": "host_decision",
+            "slot": seat, "week": simCopy.week, "visibility": "private",
+            "prompt_selection": state.promptSelection.selectionMetadata(),
+            "submitted_action": proposal, "executed_action": executed[seat],
+            "accepted": accepted[index],
+            "proposal_unchanged": accepted[index] and proposal == executed[seat],
+            "source": (if not accepted[index]: "host-sentinel"
+              elif wasScripted[index]: "player-scripted" else: "player")
+          }
+          let traceDirectory = getEnv("CONTAGION_HOST_TRACE_DIR")
+          if traceDirectory.len > 0:
+            writePrivate(traceDirectory / ("seat-" & $seat & "-week-" &
+              $simCopy.week & ".json"), $evidence & "\n")
           if state.playerSockets.hasKey(seat):
             state.playerSockets[seat].send($ %*{
               "type": "decision_result", "week": simCopy.week,
-              "accepted": accepted[index]
+              "accepted": accepted[index], "execution_evidence": evidence
             })
 
       ## Pace between weeks so spectators can read the map.
@@ -495,6 +524,7 @@ proc websocketHandler(
               let scripted = payload{"source"}.getStr() == "scripted"
               probe.applyDecision(slot, decision, scripted)
               state.pendingDecisions[slot] = decision
+              state.pendingProposals[slot] = copy(action)
               state.pendingScripted[slot] = scripted
       except CatchableError as error:
         echo "contagion: ignoring bad player frame: ", error.msg
@@ -561,13 +591,16 @@ proc runReplayServer*(runtimeConfig: RuntimeConfig) =
     runtimeConfig.port
   gameServer.serve(Port(runtimeConfig.port), runtimeConfig.host)
 
-proc runGameServer*(config: GameConfig, runtimeConfig: RuntimeConfig) =
+proc runGameServer*(config: GameConfig, runtimeConfig: RuntimeConfig,
+    selection: PromptSelection) =
   if config.tokens.len != config.players.len:
     raise newException(ContagionError, "tokens and players must align")
   state.config = config
+  state.promptSelection = selection
   state.sim = initSim(config)
   state.pendingWeek = -1
   state.pendingDecisions = initTable[int, Decision]()
+  state.pendingProposals = initTable[int, JsonNode]()
   runtimeConfigGlobal = runtimeConfig
 
   let router = buildRouter(replayMode = false)

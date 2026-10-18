@@ -8,10 +8,10 @@ from urllib.parse import parse_qs, urlsplit
 
 import websocket
 from capture import Capture
-from policy import candidates, prompts
+from policy import candidates, prompt_metadata, prompts
 
 
-def choose(turn: dict, generator) -> tuple[dict, str]:
+def choose(turn: dict, generator) -> tuple[dict, str, str | None]:
     candidates = turn["candidates"]
     if generator:
         completion = generator([
@@ -21,8 +21,8 @@ def choose(turn: dict, generator) -> tuple[dict, str]:
         action = json.loads(completion)
         if not isinstance(action, dict):
             raise ValueError("trained Contagion decision must be a JSON object")
-        return action, "trained"
-    return candidates[0]["action"], "canned"
+        return action, "trained", completion
+    return candidates[0]["action"], "canned", None
 
 
 def main() -> None:
@@ -40,7 +40,7 @@ def main() -> None:
     artifact = Capture(slot, backend) if os.environ.get("POC_CAPTURE_TRAINING") == "1" else None
     socket = websocket.create_connection(url, timeout=60)
     socket.settimeout(None)
-    pending: dict[int, tuple[dict, dict, str]] = {}
+    pending: dict[int, tuple[dict, dict, str, str | None]] = {}
     while True:
         opcode, data = socket.recv_data(control_frame=True)
         if opcode == websocket.ABNF.OPCODE_CLOSE:
@@ -50,18 +50,19 @@ def main() -> None:
         frame = json.loads(data)
         kind = frame["type"]
         if kind == "turn":
-            system, user = prompts(frame["view"], os.environ.get("PLAYER_PROMPT", ""))
+            system, user = prompts(frame["view"], os.environ.get("PLAYER_PROMPT", ""), frame["prompt_selection"])
             turn = {"system": system, "user": user,
-                    "candidates": candidates(frame["view"]), "slot": slot}
-            action, source = choose(turn, generator)
-            pending[frame["week"]] = (turn, action, source)
+                    "candidates": candidates(frame["view"]), "slot": slot,
+                    "prompt_template": prompt_metadata(frame["prompt_selection"], system, user)}
+            action, source, response = choose(turn, generator)
+            pending[frame["week"]] = (turn, action, source, response)
             socket.send(json.dumps({"type": "decision", "week": frame["week"],
                                     "action": action, "source": source}))
         elif kind == "decision_result":
-            turn, action, source = pending.pop(frame["week"])
-            if artifact and frame["accepted"]:
+            turn, action, source, response = pending.pop(frame["week"])
+            if artifact:
                 artifact.record(turn["system"], turn["user"], action, source,
-                                frame["week"])
+                                frame["week"], turn["prompt_template"], frame["execution_evidence"], response)
         elif kind == "final":
             if pending:
                 raise RuntimeError("Contagion ended with unacknowledged decisions")

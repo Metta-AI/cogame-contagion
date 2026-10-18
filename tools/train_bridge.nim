@@ -1,3 +1,4 @@
+import contagion/prompts
 ## Persistent numeric decision bridge for Metta RL and native PufferLib.
 ## nim c -d:release --path:src -o:contagion-train-bridge tools/train_bridge.nim
 
@@ -29,7 +30,7 @@ proc decision(sim: Sim, seat, id: int): JsonNode =
   for region in 0 ..< Regions:
     table.add(sim.publicRegion(region))
   let (system, user) = promptsFromView(sim.playerViewJson(seat),
-    OperatorPrompt)
+    OperatorPrompt, PromptSelection())
   %*{
     "kind": "decision", "game": "contagion", "decision_id": id,
     "seat": seat, "engine_seat": seat, "turn": sim.week,

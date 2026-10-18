@@ -1,6 +1,10 @@
 """Contagion prompts and complete candidate actions from a private view."""
 
+import hashlib
 import json
+from pathlib import Path
+
+PROMPT_BANK = json.loads(Path(__file__).with_name("prompt_bank.json").read_text())
 
 LOCKDOWN_CUTS = (1000, 4000, 12500, 30000)
 TESTING_CUTS = (1000, 12500)
@@ -47,9 +51,29 @@ def candidates(view: dict) -> list[dict]:
             {"id": "laggard", "action": laggard(view)}]
 
 
-def prompts(view: dict, guidance: str) -> tuple[str, str]:
+def selected_variant(selection: dict) -> str:
+    variant = selection["promptVariant"]
+    seed = selection["promptSeed"]
+    if type(seed) is not int or seed < 0:
+        raise ValueError("promptSeed must be a nonnegative integer")
+    if variant == "mixed":
+        variant = PROMPT_BANK["training"][seed % len(PROMPT_BANK["training"])]
+    if variant not in PROMPT_BANK["introductions"]:
+        raise ValueError("unknown prompt variant")
+    return variant
+
+
+def prompt_metadata(selection: dict, system: str, user: str) -> dict:
+    return {"bank": PROMPT_BANK["bank"], "variant": selected_variant(selection),
+            "selection": selection["promptVariant"], "seed": selection["promptSeed"],
+            "system_sha256": hashlib.sha256(system.encode()).hexdigest(),
+            "user_sha256": hashlib.sha256(user.encode()).hexdigest()}
+
+
+def prompts(view: dict, guidance: str, selection: dict) -> tuple[str, str]:
     system = (
-        f"You are the governor of {view['region']} in Contagion. Six governors "
+        PROMPT_BANK["introductions"][selected_variant(selection)].format(region=view["region"])
+        + "Six governors "
         "set lockdown 0..4, testing 0..3, and three road gates 0..2 "
         "simultaneously each week. You may send up to 200 credits of aid "
         "and a short public message. True infection counts are hidden; "
