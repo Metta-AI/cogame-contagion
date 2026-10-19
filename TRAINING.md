@@ -10,28 +10,29 @@ nim r --path:src tools/export_posttrain.nim /tmp/contagion-standard 10 1 standar
 nim r --path:src tools/export_posttrain.nim /tmp/contagion-sprint 10 1 sprint
 ```
 
-The exporter requires a clean committed checkout, reads each published
-`game_config`, and completes every configured week. It writes private
-`trajectories.jsonl` candidate evidence and `manifest.json`, retaining one episode
-in memory at a time. Output paths must not already exist.
+The exporter reads each certified `game_config` from
+`coworld_manifest_template.json`, runs ten seeded games per variant, and writes
+`train.jsonl`, `validation.jsonl`, and `manifest.json`. Seeds divisible by five
+go to validation, keeping each game entirely in one split. The published
+sentinel and laggard scripts alternate by seat. Every reply passes through the
+hosted parser before its action advances the native simulator. The exporter
+refuses an existing output directory.
 
-Sentinel and laggard teachers alternate by seat. Prompts and private observations
-are frozen before the weekly batch. Each record retains the original proposal
-and the engine's executed action. A normalized proposal is retained but cannot
-be selected as an accepted training response. Model call identifiers and token
-probabilities remain unknown for these scripted teachers.
+From a Metta checkout, train the text policy with its post-training CLI:
 
-Optional `PROMPT_VARIANT PROMPT_SEED` arguments follow `VARIANT`. Held-out
-wordings are evaluation-only and rejected by this exporter. Seed families exclude
-game variant and wording, keeping matched scenarios together during splitting.
+```bash
+uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
+  --dataset /tmp/contagion-standard \
+  --output /tmp/contagion-model --model Qwen/Qwen2.5-0.5B-Instruct \
+  --max-steps 100 --max-length 4096
+```
 
-Convert candidate evidence through the shared Coworld trajectory importer and
-complete its independent review gate before training. Scripted imitation loss
-does not measure learned policy quality or prompt robustness.
+The dataset is imitation of scripted play; its loss does not measure policy
+quality.
 
-The [ordinary player](players/ordinary/README.md) can collect proposals and host execution evidence from real local
-episodes through the standard Coworld policy artifact URL. Its candidate exporter keeps matched game seeds
-together for shared split assignment. The same player can load the resulting adapter and submit its
+The [ordinary player](players/ordinary/README.md) can collect accepted actions from real local
+episodes through the standard Coworld policy artifact URL. Its exporter keeps complete game seeds
+in one train or validation split. The same player can load the resulting adapter and submit its
 decisions through `contagion.player.v3`. Jev selects complete weekly actions through that socket.
 
 ## Numeric reinforcement learning
@@ -53,31 +54,32 @@ true infection counts. The sentinel and laggard scripts supply teacher dials.
 The numeric policy omits aid and free-form talk or notes; the text exporter
 retains the full hosted reply interface.
 
-## Prompt wording and text decisions
+## Prompt fuzzing
 
-Hosted configurations accept `promptVariant` and `promptSeed`. Training wordings
-are `canonical`, `plain`, `numbered`, `questions`, and `reordered`. `mixed`
-requires an explicit nonnegative seed and selects training wording by `seed % 5`.
-`heldout-briefing` and `heldout-reference` are reserved for evaluation. Selection
-is separate from simulation randomness and stays fixed throughout the episode.
+Select canonical, plain, numbered, questions, or reordered through `promptVariant`.
+Mixed selection requires an explicit nonnegative `promptSeed`, independent of
+simulation randomness. Selection remains fixed across the whole game.
+Heldout-briefing and heldout-reference are evaluation-only; training rejects them.
 
-The host sends the selection alongside each private turn. Both bundled Nim and
-ordinary Python players read introductions from
-`players/ordinary/prompt_bank.json`; common rules and operator guidance stay
-fixed. Ordinary player images include that bank. The default remains canonical.
+Nim and ordinary Python players share the versioned JSON wording bank at
+`players/ordinary/prompt_bank.json`. It varies weekly controls, simultaneous
+decisions, hidden information, and scoring explanations. Numeric rules, action
+schemas, and operator guidance remain fixed. Canonical text is unchanged.
 
-`tools/text_bridge.nim` exposes full production actions, including aid, talk, and
-private notes. Run its compiled binary with the manifest and `standard` or
-`sprint`. Reset accepts the same selector fields and rejects held-out wording in
-training. Six parsed actions are queued against the frozen week, then the real
-simulator settles them together. Accepted actions describe normalized orders,
-not a guarantee of economic or health outcomes. Private semantic views include
-bank identity, wording, seed, and exact system/user hashes.
+The text bridge `tools/text_bridge.nim` supports the reset/teacher/step protocol.
+Reset accepts the selector and a train, validation, or test split. Private
+observations include selection metadata and exact message hashes.
 
-The numeric bridge retains its 99 values and five action heads. Compare full text
-games and numeric outcomes with `python tools/test_prompt_variants.py TEXT_BRIDGE
-ORIGINAL_NUMERIC_BRIDGE`. Keep every variant and wording of one scenario seed in
-the same data split. Matched model experiments must hold scenario seeds, seat
-assignments, other policies, and inference budgets fixed. Report corrected
-orders, failures, fallbacks, incomplete episodes, ledger totals, deaths, and
-scores separately. Scripted outcomes do not measure learned policy robustness.
+The native exporter accepts optional `PROMPT_VARIANT PROMPT_SEED` arguments after
+the game variant. Mixed exports cycle the five training wordings within the
+requested game count. Original train/validation files remain; seed families
+exclude game variant and wording. Seeds divisible by five enter validation.
+
+```sh
+python tools/test_prompt_variants.py TEXT_BRIDGE NUMERIC_BRIDGE
+python tools/ci/player_policy_smoke.py GAME PLAYER
+```
+
+The complete-game checks compare native/Python prompts, private information,
+actions, and outcomes. The existing native smoke exercises mixed wording in
+actual requests. Scripted checks do not measure learned robustness.

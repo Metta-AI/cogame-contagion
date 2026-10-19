@@ -23,7 +23,7 @@
 
 import
   std/[json, locks, os, sets, strutils, tables, times],
-  bitworld/[runtime, decision_trajectory],
+  bitworld/runtime,
   curly,
   mummy,
   mummy/routers,
@@ -371,10 +371,6 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
             "source": (if not accepted[index]: "host-sentinel"
               elif wasScripted[index]: "player-scripted" else: "player")
           }
-          let traceDirectory = getEnv("CONTAGION_HOST_TRACE_DIR")
-          if traceDirectory.len > 0:
-            writePrivate(traceDirectory / ("seat-" & $seat & "-week-" &
-              $simCopy.week & ".json"), $evidence & "\n")
           if state.playerSockets.hasKey(seat):
             state.playerSockets[seat].send($ %*{
               "type": "decision_result", "week": simCopy.week,

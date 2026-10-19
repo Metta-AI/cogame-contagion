@@ -1,5 +1,5 @@
 {
-  "bank": "contagion-rules-v1",
+  "bank": "contagion-rules-v2",
   "training": [
     "canonical",
     "plain",
@@ -15,5 +15,14 @@
     "reordered": "Contagion puts you in charge of {region} as its governor. ",
     "heldout-briefing": "Take the role of governor responsible for {region} in Contagion. ",
     "heldout-reference": "Contagion role reference: governor of {region}. "
+  },
+  "rules": {
+    "canonical": "Six governors set lockdown 0..4, testing 0..3, and three road gates 0..2 simultaneously each week. You may send up to 200 credits of aid and a short public message. True infection counts are hidden; reported cases reflect each region's published testing. Maximize your own ledger minus twice your deaths. Reply with one JSON action and no other text.",
+    "plain": "Each week, six governors choose at once: lockdown from 0 to 4, testing from 0 to 3, and a gate from 0 to 2 on each of three roads. You can also send up to 200 credits in aid and a short public message. Infection totals are hidden; reported cases depend on each region's published testing. Aim for the highest own ledger minus twice your deaths. Return one JSON action with no additional text.",
+    "numbered": "Weekly briefing:\n1. Six governors choose simultaneously.\n2. Set lockdown 0..4, testing 0..3, and each of three road gates 0..2.\n3. You may send up to 200 credits of aid and a short public message.\n4. True infection counts are hidden. Reported cases reflect each region's published testing.\n5. Maximize your own ledger minus twice your deaths.\n6. Return one JSON action and no other text.",
+    "questions": "Who acts each week? Six governors, simultaneously. What do you set? Lockdown 0..4, testing 0..3, and three road gates 0..2. What else can you send? Up to 200 credits of aid and a short public message. Can you see true infection counts? No; reported cases reflect each region's published testing. What do you maximize? Your own ledger minus twice your deaths. How do you reply? One JSON action, without other text.",
+    "reordered": "Maximize your own ledger minus twice your deaths. True infections are hidden; case reports reflect each region's published testing. Every week six governors act simultaneously. Choose lockdown 0..4, testing 0..3, and three road gates 0..2. Optionally send up to 200 credits of aid and a short public message. Reply with one JSON action and nothing else.",
+    "heldout-briefing": "Governor briefing: six governors make simultaneous weekly choices. Your controls are lockdown 0..4, testing 0..3, and three road gates 0..2. You may add aid of up to 200 credits and a short public message. Reports conceal true infection counts and reflect each region's published testing. Your objective is your own ledger minus twice your deaths. Submit only one JSON action.",
+    "heldout-reference": "Decision timing: six governors simultaneously each week. Controls: lockdown 0..4; testing 0..3; three road gates 0..2. Optional outputs: up to 200 credits of aid; a short public message. Hidden information: true infections. Case reports: reflect each region's published testing. Objective: maximize your own ledger minus twice your deaths. Response: one JSON action, no other text."
   }
 }

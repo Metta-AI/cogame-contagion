@@ -71,16 +71,8 @@ def prompt_metadata(selection: dict, system: str, user: str) -> dict:
 
 
 def prompts(view: dict, guidance: str, selection: dict) -> tuple[str, str]:
-    system = (
-        PROMPT_BANK["introductions"][selected_variant(selection)].format(region=view["region"])
-        + "Six governors "
-        "set lockdown 0..4, testing 0..3, and three road gates 0..2 "
-        "simultaneously each week. You may send up to 200 credits of aid "
-        "and a short public message. True infection counts are hidden; "
-        "reported cases reflect each region's published testing. Maximize "
-        "your own ledger minus twice your deaths. Reply with one JSON "
-        "action and no other text."
-    )
+    variant = selected_variant(selection)
+    system = (PROMPT_BANK["introductions"][variant] + PROMPT_BANK["rules"][variant]).format(region=view["region"])
     user = (
         "Private governor observation:\n"
         + json.dumps(view, ensure_ascii=False, separators=(",", ":"))

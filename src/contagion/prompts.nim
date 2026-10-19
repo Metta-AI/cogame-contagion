@@ -17,7 +17,7 @@ type
     seed*: int
 
 const
-  PromptBankVersion* = "contagion-rules-v1"
+  PromptBankVersion* = "contagion-rules-v2"
   PromptBankJson = staticRead("../../players/ordinary/prompt_bank.json")
 
 proc promptSelection*(node: JsonNode): PromptSelection =
@@ -45,9 +45,10 @@ proc promptMetadata*(selection: PromptSelection, system, user: string): JsonNode
     "selection": $selection.variant, "seed": selection.seed,
     "system_sha256": sha256(system).toHex, "user_sha256": sha256(user).toHex}
 
-proc introduction*(selection: PromptSelection, region: string): string =
+proc systemBriefing*(selection: PromptSelection, region: string): string =
   let bank = parseJson(PromptBankJson)
-  bank["introductions"][$selection.selectedVariant].getStr().replace("{region}", region)
+  (bank["introductions"][$selection.selectedVariant].getStr() &
+    bank["rules"][$selection.selectedVariant].getStr()).replace("{region}", region)
 
 proc selectionMetadata*(selection: PromptSelection): JsonNode =
   %*{"bank": PromptBankVersion, "variant": $selection.selectedVariant,
