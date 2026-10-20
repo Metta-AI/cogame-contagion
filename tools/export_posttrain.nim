@@ -72,7 +72,8 @@ when isMainModule:
         let (system, user) = promptsFromView(sim.playerViewJson(seat),
           OperatorPrompt, selection)
         rows.add($(%*{
-          "episode_id": "contagion-" & variant & "-" & $seed & "-" & $selection.selectedVariant,
+          "episode_id": "contagion-" & variant & "-" & $seed & "-" & $selection.variant & "-" &
+              $selection.selectedVariant & "-" & $selection.seed,
           "seed": "contagion-" & $seed,
           "decision_id": rows.len,
           "prompt": [

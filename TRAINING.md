@@ -18,14 +18,8 @@ sentinel and laggard scripts alternate by seat. Every reply passes through the
 hosted parser before its action advances the native simulator. The exporter
 refuses an existing output directory.
 
-From a Metta checkout, train the text policy with its post-training CLI:
-
-```bash
-uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
-  --dataset /tmp/contagion-standard \
-  --output /tmp/contagion-model --model Qwen/Qwen2.5-0.5B-Instruct \
-  --max-steps 100 --max-length 4096
-```
+Language training is owned by the [Metta posttraining research package](https://github.com/Metta-AI/posttraining-research/tree/main/packages/metta-posttraining).
+Use its documented training and source-admission workflows from that checkout.
 
 The dataset is imitation of scripted play; its loss does not measure policy
 quality.
@@ -83,3 +77,6 @@ python tools/ci/player_policy_smoke.py GAME PLAYER
 The complete-game checks compare native/Python prompts, private information,
 actions, and outcomes. The existing native smoke exercises mixed wording in
 actual requests. Scripted checks do not measure learned robustness.
+
+Episode IDs include the requested selection, resolved wording, and prompt seed.
+Matched exports remain distinct while scenario seed families stay unchanged.
