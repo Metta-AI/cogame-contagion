@@ -14,10 +14,10 @@ Set `POC_CAPTURE_TRAINING=1` and `POC_SOURCE_REVISION=<policy commit>` to upload
 
 ```bash
 python players/ordinary/export.py /tmp/contagion-dataset /tmp/contagion-runs --source-revision <policy-commit>
-uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
-  --dataset /tmp/contagion-dataset --output /tmp/contagion-adapter --model /path/to/base-model \
-  --device cpu --max-steps 100 --max-length 4096 --max-eval-examples 128
 ```
+
+Use the [post-training research package](https://github.com/Metta-AI/posttraining-research/tree/main/packages/metta-posttraining)
+for current training and adapter-packaging workflows.
 
 The existing `tools/export_posttrain.nim` also exports scripted complete games without containers. The artifact exporter admits only completed games, accepted actions, a matching source revision, and separate whole-game seed splits.
 
@@ -30,3 +30,19 @@ docker build --platform linux/amd64 -f Dockerfile.ordinary-model \
 ```
 
 The loader checks the base model hash against Metta's training manifest. Evaluate saved policies on held-out games before fielding them.
+
+## Prompt wording
+
+The host supplies `prompt_selection` on each turn. Both native and ordinary
+players render the same versioned `prompt_bank.json`. Rebuild the host and both
+player images together.
+
+Existing policy artifacts retain their format. New captures add exact prompt
+hashes and the host's executed action. Export verifies available hashes and
+excludes new proposals changed or rejected by the host. Historical artifacts
+remain readable; they contain only the earlier accepted-decision information.
+Held-out game configurations are rejected for training export.
+
+Ordinary export IDs include the complete capture hash. Matched wording runs may
+share a scenario seed and remain in the same split; duplicate captures are rejected.
+Exported rows retain available selection metadata and verified message hashes.

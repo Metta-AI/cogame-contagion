@@ -2,7 +2,7 @@
 
 import std/[json, os, strutils, unicode]
 import bitworld/runtime, curly
-import sim, rules
+import sim, rules, prompts
 
 const
   AnthropicUrl = "https://api.anthropic.com/v1/messages"
@@ -228,14 +228,8 @@ proc scriptedActionFromView*(view: JsonNode, kind: ScriptKind): JsonNode =
   %*{"lockdown": lockdown, "testing": testing, "borders": borders,
      "aid": [], "say": "", "notes": ""}
 
-proc promptsFromView*(view: JsonNode, guidance: string): tuple[system, user: string] =
-  result.system = "You are the governor of " & view["region"].getStr() &
-    " in Contagion. Six governors set lockdown 0..4, testing 0..3, and " &
-    "three road gates 0..2 simultaneously each week. You may send up to " &
-    "200 credits of aid and a short public message. True infection counts " &
-    "are hidden; reported cases reflect each region's published testing. " &
-    "Maximize your own ledger minus twice your deaths. Reply with one JSON " &
-    "action and no other text."
+proc promptsFromView*(view: JsonNode, guidance: string, selection: PromptSelection): tuple[system, user: string] =
+  result.system = selection.systemBriefing(view["region"].getStr())
   result.user = "Private governor observation:\n" & $view &
     "\nOperator guidance:\n" & guidance &
     "\nReply with only {\"lockdown\": 0, \"testing\": 2, " &
@@ -243,8 +237,8 @@ proc promptsFromView*(view: JsonNode, guidance: string): tuple[system, user: str
     "\"say\": \"\", \"notes\": \"\"}. Only name your three roads."
 
 proc choosePromptAction*(client: LlmClient, view: JsonNode,
-    guidance: string, slot: int): JsonNode =
-  let (system, user) = promptsFromView(view, guidance)
+    guidance: string, slot: int, selection: PromptSelection): JsonNode =
+  let (system, user) = promptsFromView(view, guidance, selection)
   let request = client.requestFor(system, user, slot)
   var batch: RequestBatch
   batch.post(request.url, request.headers, request.body, "seat")

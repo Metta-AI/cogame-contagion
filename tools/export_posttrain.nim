@@ -2,19 +2,24 @@
 ## Usage: nim r --path:src tools/export_posttrain.nim OUTPUT GAMES [FIRST_SEED] [VARIANT]
 
 import std/[json, os, osproc, strutils]
-import contagion/[player_policy, rules, sim]
+import contagion/[player_policy, prompts, rules, sim]
 
 const OperatorPrompt = "Protect your region's health and economy using the published case reports."
 const Variants = ["standard", "sprint"]
 
 when isMainModule:
   let args = commandLineParams()
-  if args.len notin 2 .. 4:
-    quit("usage: export_posttrain OUTPUT GAMES [FIRST_SEED] [VARIANT]", 1)
+  if args.len notin [2, 3, 4, 6]:
+    quit("usage: export_posttrain OUTPUT GAMES [FIRST_SEED] [VARIANT [PROMPT_VARIANT PROMPT_SEED]]", 1)
   let output = args[0]
   let games = parseInt(args[1])
   let firstSeed = if args.len >= 3: parseInt(args[2]) else: 1
-  let variant = if args.len == 4: args[3] else: Variants[0]
+  let variant = if args.len >= 4: args[3] else: Variants[0]
+  let initialSelection = promptSelection(if args.len == 6:
+    %*{"promptVariant": args[4], "promptSeed": parseInt(args[5])} else: newJObject())
+  if initialSelection.selectedVariant in {pvHeldoutBriefing, pvHeldoutReference}:
+    raise newException(ValueError, "held-out prompt variants are evaluation-only")
+  doAssert execProcess("git status --porcelain").strip().len == 0, "commit source before export"
   if games < 10 or firstSeed < 1:
     quit("at least ten games and a positive first seed are required", 1)
   if variant notin Variants:
@@ -22,6 +27,7 @@ when isMainModule:
   if dirExists(output) or fileExists(output):
     quit("output already exists: " & output, 1)
   createDir(output)
+  setFilePermissions(output, {fpUserRead, fpUserWrite, fpUserExec})
   let sourceRevision = execProcess("git rev-parse HEAD").strip()
   let manifest = parseFile("coworld_manifest_template.json")
   var variantConfig: JsonNode
@@ -33,7 +39,13 @@ when isMainModule:
     trainRows: seq[string]
     validationRows: seq[string]
     runs = newJArray()
+    wordingCounts: array[2, int]
   for seed in firstSeed ..< firstSeed + games:
+    var selection = initialSelection
+    let partition = ord(seed mod 5 == 0)
+    if selection.variant == pvMixed:
+      selection.seed += wordingCounts[partition]
+    inc wordingCounts[partition]
     var config = defaultGameConfig()
     let runtimeConfig = copy(variantConfig)
     runtimeConfig["tokens"] = newJArray()
@@ -58,10 +70,11 @@ when isMainModule:
           parsed.borders == teacher.borders and
           parsed.aid.len == 0 and not parsed.corrected
         let (system, user) = promptsFromView(sim.playerViewJson(seat),
-          OperatorPrompt)
+          OperatorPrompt, selection)
         rows.add($(%*{
-          "episode_id": "contagion-" & variant & "-" & $seed,
-          "seed": "contagion-" & variant & "-" & $seed,
+          "episode_id": "contagion-" & variant & "-" & $seed & "-" & $selection.variant & "-" &
+              $selection.selectedVariant & "-" & $selection.seed,
+          "seed": "contagion-" & $seed,
           "decision_id": rows.len,
           "prompt": [
             {"role": "system", "content": system},
@@ -80,7 +93,7 @@ when isMainModule:
       validationRows.add(rows)
     else:
       trainRows.add(rows)
-    runs.add(%*{"seed": seed, "decisions": rows.len,
+    runs.add(%*{"prompt_selection": selection.selectionMetadata(), "seed": seed, "decisions": rows.len,
       "scores": outcome["scores"], "weeks_played": sim.weeksPlayed})
   writeFile(output / "train.jsonl", trainRows.join("\n") & "\n")
   writeFile(output / "validation.jsonl", validationRows.join("\n") & "\n")

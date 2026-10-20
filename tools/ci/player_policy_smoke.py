@@ -1,5 +1,6 @@
 """One native Contagion game with canned, prompt, and scripted player processes."""
 
+import hashlib
 import json
 import os
 import socket
@@ -9,6 +10,7 @@ import tempfile
 import threading
 import time
 import urllib.request
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -22,6 +24,7 @@ class ModelStub(BaseHTTPRequestHandler):
         slot = self.headers["X-Coworld-Player-Slot"]
         self.calls.append((self.path, slot))
         assert self.path == "/v1/messages"
+        assert "Maximize your own ledger minus twice your deaths. True infections" in request["system"]
         payload = {
             "content": [{"type": "text", "text": '{"lockdown":1,"testing":2,"borders":{},"aid":[],"say":"","notes":""}'}]
         }
@@ -53,6 +56,8 @@ def main() -> None:
         work = Path(temp)
         config = {
             "seed": 7,
+            "promptVariant": "mixed",
+            "promptSeed": 4,
             "weeks": 4,
             "turnDelayMs": 0,
             "turnBudgetSeconds": 5,
@@ -110,6 +115,9 @@ def main() -> None:
                 if seat == 1:
                     env["COWORLD_LLM_ENDPOINT"] = stub_url
                 if seat == 0:
+                    env["POC_CAPTURE_TRAINING"] = "1"
+                    env["POC_SOURCE_REVISION"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+                    env["COWORLD_PLAYER_ARTIFACT_UPLOAD_URL"] = (work / "policy_artifact_0.zip").as_uri()
                     argv = [
                         sys.executable,
                         str(Path(__file__).parents[2] / "players/ordinary/player.py"),
@@ -131,6 +139,16 @@ def main() -> None:
             results = json.loads((work / "results.json").read_text())
             replay = json.loads((work / "replay.json").read_text())
             assert results["weeks"] == 4 and replay["events"]
+            with zipfile.ZipFile(work / "policy_artifact_0.zip") as artifact:
+                trajectory = json.loads(artifact.read("trajectory.json"))
+            assert trajectory["complete"] and len(trajectory["decisions"]) == 4
+            for row in trajectory["decisions"]:
+                metadata = row["prompt_template"]
+                assert metadata["variant"] == "reordered"
+                assert row["execution_evidence"]["accepted"]
+                assert json.loads(row["completion"][0]["content"]) == row["execution_evidence"]["executed_action"]
+                for message in row["prompt"]:
+                    assert metadata[message["role"] + "_sha256"] == hashlib.sha256(message["content"].encode()).hexdigest()
             game_text = (work / "game.log").read_text()
             assert "using sentinel fallback" not in game_text
             prompt = [call for call in ModelStub.calls if call[0] == "/v1/messages"]

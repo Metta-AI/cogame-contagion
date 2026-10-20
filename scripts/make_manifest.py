@@ -244,7 +244,7 @@ or, for one of the built-in baselines, `--secret-env PLAYER_SCRIPTED=sentinel` (
 
 
 def player_runnable(runnable_id: str, name: str, description: str,
-                    env: dict | None = None) -> dict:
+                    env: dict) -> dict:
     entry = {
         "id": runnable_id,
         "name": name,
@@ -253,8 +253,7 @@ def player_runnable(runnable_id: str, name: str, description: str,
         "image": IMAGE,
         "run": ["/bin/contagion-player"],
     }
-    if env:
-        entry["env"] = env
+    entry["env"] = env
     entry["resources"] = {
         "requests": {"cpu": "100m", "memory": "64Mi"},
         "limits": {"cpu": "1"},
@@ -298,6 +297,14 @@ MANIFEST = {
             "additionalProperties": False,
             "required": ["tokens", "players"],
             "properties": {
+                "promptVariant": {
+                    "type": "string", "default": "canonical",
+                    "enum": [
+                        "canonical", "plain", "numbered", "questions", "reordered",
+                        "heldout-briefing", "heldout-reference", "mixed",
+                    ],
+                },
+                "promptSeed": {"type": "integer", "minimum": 0, "default": 0},
                 "tokens": {
                     "description": "One connection token per player slot, indexed by slot.",
                     "type": "array",
@@ -456,7 +463,7 @@ MANIFEST = {
             "contagion-player",
             "Contagion Prompt Player",
             "The reference Contagion policy: reads its private view, uses PLAYER_PROMPT (or a default strategy) to choose and submit an action. Field your own policy with a different PLAYER_PROMPT.",
-            {"ANTHROPIC_API_KEY_URI": "secret://coworld/contagion/anthropic_api_key"},
+            {},
         ),
         player_runnable(
             "contagion-sentinel",

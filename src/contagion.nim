@@ -5,7 +5,8 @@ import
   std/[json, sysrand],
   bitworld/runtime,
   contagion/server,
-  contagion/sim
+  contagion/sim,
+  contagion/prompts
 
 proc randomSeed(): int =
   var buf: array[4, byte]
@@ -42,4 +43,5 @@ when isMainModule:
     echo "contagion: seats=", config.players.len,
       " weeks=", config.weeks,
       " talk=", config.talk
-    runGameServer(config, runtimeConfig)
+    runGameServer(config, runtimeConfig, promptSelection(
+      if runtimeConfig.config.len > 0: parseJson(runtimeConfig.config) else: newJObject()))

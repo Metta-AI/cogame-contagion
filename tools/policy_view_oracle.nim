@@ -1,3 +1,4 @@
+import contagion/prompts
 ## Emits private views and native baseline actions across complete games.
 import std/json
 import contagion/[player_policy, rules, sim]
@@ -15,7 +16,7 @@ for seed in [1, 7, 42, 1234]:
       let sentinel = scriptedDecision(snapshot, seat, skSentinel)
       let laggard = scriptedDecision(snapshot, seat, skLaggard)
       let (system, user) = promptsFromView(snapshot.playerViewJson(seat),
-        "operator says hi")
+        "operator says hi", PromptSelection())
       echo $(%*{
         "view": snapshot.playerViewJson(seat),
         "sentinel": decisionJson(snapshot, seat, sentinel),

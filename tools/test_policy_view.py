@@ -15,7 +15,7 @@ for row in rows:
     found = candidates(sample["view"])
     assert found[0]["action"] == sample["sentinel"]
     assert found[1]["action"] == sample["laggard"]
-    assert prompts(sample["view"], "operator says hi") == (
+    assert prompts(sample["view"], "operator says hi", {"promptVariant": "canonical", "promptSeed": 0}) == (
         sample["system"], sample["user"])
 assert len(rows) == 4 * 20 * 6
 print(f"player baseline parity: {len(rows)} actions per policy")
