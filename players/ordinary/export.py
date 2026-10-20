@@ -18,7 +18,7 @@ def export(runs: list[Path], output: Path, revision: str, source: str,
         raise ValueError("validation modulus must be at least two")
     splits: dict[str, list[str]] = {"train": [], "validation": []}
     episodes: list[dict] = []
-    seeds: set[int] = set()
+    episode_ids: set[str] = set()
     for run in runs:
         config = json.loads((run / "config.json").read_text())
         results = json.loads((run / "results.json").read_text())
@@ -29,9 +29,6 @@ def export(runs: list[Path], output: Path, revision: str, source: str,
         if selected_variant(selection).startswith("heldout-"):
             raise ValueError("held-out wording is evaluation-only")
         seed = config["seed"]
-        if seed in seeds:
-            raise ValueError(f"duplicate game seed {seed}")
-        seeds.add(seed)
         if results["reason"] != "complete":
             raise ValueError(f"incomplete game {run}")
         split = "validation" if seed % validation_modulus == 0 else "train"
@@ -39,7 +36,12 @@ def export(runs: list[Path], output: Path, revision: str, source: str,
         for artifact in sorted(run.glob("policy_artifact_*.zip")):
             slot = int(artifact.stem.removeprefix("policy_artifact_"))
             with zipfile.ZipFile(artifact) as archive:
-                trajectory = json.loads(archive.read("trajectory.json"))
+                content = archive.read("trajectory.json")
+                trajectory = json.loads(content)
+            episode_id = f"contagion-{seed}-seat-{slot}-{hashlib.sha256(content).hexdigest()}"
+            if episode_id in episode_ids:
+                raise ValueError(f"duplicate training capture {artifact}")
+            episode_ids.add(episode_id)
             if (trajectory["schema_version"] != 1 or trajectory["game"] != "contagion"
                     or trajectory["slot"] != slot
                     or trajectory["source_revision"] != revision
@@ -62,7 +64,7 @@ def export(runs: list[Path], output: Path, revision: str, source: str,
                     if not evidence["accepted"] or json.loads(row["completion"][0]["content"]) != evidence["executed_action"]:
                         continue
                 example = {
-                    "episode_id": f"contagion-{seed}-seat-{slot}",
+                    "episode_id": episode_id,
                     "seed": f"contagion-{seed}",
                     "decision_id": row["decision_id"],
                     "prompt": row["prompt"],
@@ -70,6 +72,8 @@ def export(runs: list[Path], output: Path, revision: str, source: str,
                     "game": "contagion",
                     "action_schema_revision": "contagion-dials-v1",
                 }
+                if "prompt_template" in row:
+                    example["prompt_template"] = row["prompt_template"]
                 splits[split].append(json.dumps(example, ensure_ascii=False))
                 count += 1
         if count == 0:
