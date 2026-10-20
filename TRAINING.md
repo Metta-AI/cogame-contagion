@@ -71,8 +71,8 @@ Reset accepts the selector and a train, validation, or test split. Private
 observations include selection metadata and exact message hashes.
 
 The native exporter accepts optional `PROMPT_VARIANT PROMPT_SEED` arguments after
-the game variant. Mixed exports cycle the five training wordings within the
-requested game count. Original train/validation files remain; seed families
+the game variant. Mixed exports cycle the five training wordings separately within each split.
+This prevents every-fifth-seed validation from excluding a training wording. Original train/validation files remain; seed families
 exclude game variant and wording. Seeds divisible by five enter validation.
 
 ```sh
